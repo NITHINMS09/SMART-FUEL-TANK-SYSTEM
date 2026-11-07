@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #070b14;
+    color: #e2e8f0;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+/* Custom industrial scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090e1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00e5ff44;
+}
+
+/* Glass panel glow classes */
+.panel-glass {
+  background: rgba(13, 21, 39, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(30, 41, 59, 0.8);
+}
+
+.panel-glass:hover {
+  border-color: rgba(0, 229, 255, 0.25);
+}
+
+.panel-glass-active {
+  background: rgba(13, 21, 39, 0.85);
+  border: 1px solid rgba(0, 229, 255, 0.5);
+  box-shadow: 0 0 15px -3px rgba(0, 229, 255, 0.15);
+}
+
+/* Glowing text */
+.glow-text-cyan {
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+}
+
+.glow-text-green {
+  text-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+}
+
+.glow-text-red {
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+}
