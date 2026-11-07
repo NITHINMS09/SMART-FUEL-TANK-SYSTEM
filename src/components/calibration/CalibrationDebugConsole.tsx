@@ -202,3 +202,4 @@ export const CalibrationDebugConsole: React.FC<CalibrationDebugConsoleProps> = (
     </div>
   );
 };
+
