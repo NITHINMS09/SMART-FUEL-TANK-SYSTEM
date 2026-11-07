@@ -54,6 +54,7 @@ export function App() {
     calProcessingStatus,
     debugLogs,
     startCalibrationCapture,
+    cancelCalibration,
     deletePoint,
     updatePoint,
     replaceAllPoints,
@@ -216,6 +217,7 @@ export function App() {
               onClearDebugLogs={clearDebugLogs}
               stabilityThreshold={stabilityThreshold}
               onStartCalibration={(vol) => startCalibrationCapture(vol)}
+              onCancelCalibration={cancelCalibration}
               onDeletePoint={deletePoint}
               onUpdatePoint={updatePoint}
               currentEstimatedVolume={volumeInterpolation.volumeMl}

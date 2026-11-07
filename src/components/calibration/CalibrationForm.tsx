@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Scale, Play, CheckCircle2, AlertTriangle, RefreshCw, Radio, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Scale, Play, CheckCircle2, AlertTriangle, RefreshCw, XCircle } from 'lucide-react';
 import { LoadCellStats, RawReading, ConnectionState, CalResultData } from '../../types';
 import { formatNumber } from '../../utils/formatters';
 import { StatusBadge } from '../common/StatusBadge';
@@ -15,6 +15,7 @@ interface CalibrationFormProps {
   calProcessingStatus: string;
   stabilityThreshold: number;
   onStartCalibration: (volumeMl: number) => Promise<boolean>;
+  onCancelCalibration?: () => void;
 }
 
 export const CalibrationForm: React.FC<CalibrationFormProps> = ({
@@ -28,9 +29,25 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
   calProcessingStatus,
   stabilityThreshold,
   onStartCalibration,
+  onCancelCalibration,
 }) => {
   const [volumeInput, setVolumeInput] = useState<string>('0');
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const presets = [0, 100, 200, 300, 500, 750, 1000];
+
+  // Track elapsed seconds while calibrating
+  useEffect(() => {
+    let timer: any;
+    if (isCalibrating) {
+      setElapsedSeconds(0);
+      timer = setInterval(() => {
+        setElapsedSeconds((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setElapsedSeconds(0);
+    }
+    return () => clearInterval(timer);
+  }, [isCalibrating]);
 
   const parsedVolume = parseFloat(volumeInput);
   const isValidVolume = !isNaN(parsedVolume) && parsedVolume >= 0;
@@ -95,7 +112,7 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
               {isCalibrating ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Sampling on ESP32...</span>
+                  <span>Sampling ({elapsedSeconds}s)...</span>
                 </>
               ) : (
                 <>
@@ -104,6 +121,19 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
                 </>
               )}
             </button>
+
+            {/* Cancel sampling button to unlock UI immediately */}
+            {isCalibrating && onCancelCalibration && (
+              <button
+                type="button"
+                onClick={onCancelCalibration}
+                className="px-4 py-2.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-mono font-bold text-xs uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-sm"
+                title="Cancel sampling and unlock interface"
+              >
+                <XCircle className="w-4 h-4 text-rose-400" />
+                <span>Cancel</span>
+              </button>
+            )}
           </div>
 
           {/* Quick Presets */}

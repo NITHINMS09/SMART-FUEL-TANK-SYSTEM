@@ -28,6 +28,7 @@ interface CalibrationPageProps {
   onClearDebugLogs: () => void;
   stabilityThreshold: number;
   onStartCalibration: (volumeMl: number) => Promise<boolean>;
+  onCancelCalibration?: () => void;
   onDeletePoint: (id: string) => Promise<void>;
   onUpdatePoint: (id: string, newVolume: number) => void;
   currentEstimatedVolume: number | null;
@@ -47,6 +48,7 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
   onClearDebugLogs,
   stabilityThreshold,
   onStartCalibration,
+  onCancelCalibration,
   onDeletePoint,
   onUpdatePoint,
   currentEstimatedVolume,
@@ -74,6 +76,7 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
         calProcessingStatus={calProcessingStatus}
         stabilityThreshold={stabilityThreshold}
         onStartCalibration={onStartCalibration}
+        onCancelCalibration={onCancelCalibration}
       />
 
       {/* 2. Requirement 10: Dedicated Serial Communication Debug Console */}

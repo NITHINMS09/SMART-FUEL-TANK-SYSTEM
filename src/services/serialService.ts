@@ -446,7 +446,7 @@ export class SerialService {
     this.lineBuffer = lines.pop() || '';
 
     for (const rawLine of lines) {
-      const line = rawLine.replace(/\r/g, '').trim();
+      const line = rawLine.replace(/[\r\x00-\x08\x0B-\x1F\x7F-\x9F]/g, '').trim();
       if (line.length > 0) {
         this.handleIncomingLine(line);
       }

@@ -79,6 +79,8 @@ String inputBuffer = "";
 
 // Forward declarations
 long readHX711Raw();
+bool isHX711Ready();
+bool waitHX711Ready(unsigned long timeoutMs = 150);
 void processCommand(const String& cmd);
 void saveCalibrationToNVS();
 void loadCalibrationFromNVS();
@@ -155,8 +157,24 @@ void loop() {
 }
 
 // ============================================================================
-// HX711 24-BIT BIT-BANG READ
+// HX711 24-BIT BIT-BANG READ & TIMEOUT HANDLING
 // ============================================================================
+bool isHX711Ready() {
+  return digitalRead(PIN_HX711_DT) == LOW;
+}
+
+bool waitHX711Ready(unsigned long timeoutMs) {
+  unsigned long start = millis();
+  while (digitalRead(PIN_HX711_DT) != LOW) {
+    if (millis() - start >= timeoutMs) {
+      return false; // Hardware timeout
+    }
+    delayMicroseconds(200);
+    yield(); // Prevent hardware watchdog reset during wait
+  }
+  return true;
+}
+
 long readHX711Raw() {
   unsigned long count = 0;
   
@@ -236,18 +254,72 @@ void processCommand(const String& cmd) {
   }
 
   if (cmd.startsWith("CAL,")) {
-    // Format: CAL,<ml>
-    float ml = cmd.substring(4).toFloat();
-    
-    // Compute sliding window statistics over latest 20 readings
-    long minVal = rawSamples[0];
-    long maxVal = rawSamples[0];
-    long sum = 0;
-    int count = bufferFilled ? SAMPLE_WINDOW : sampleIndex;
-    if (count == 0) count = 1;
+    // Format: CAL,<ml> or CAL,<ml>,<threshold>
+    int commaIdx = cmd.indexOf(',', 4);
+    float ml = 0;
+    long maxAllowedRange = STABILITY_THRESHOLD;
+    if (commaIdx != -1) {
+      ml = cmd.substring(4, commaIdx).toFloat();
+      maxAllowedRange = cmd.substring(commaIdx + 1).toInt();
+      if (maxAllowedRange <= 0) maxAllowedRange = STABILITY_THRESHOLD;
+    } else {
+      ml = cmd.substring(4).toFloat();
+    }
 
+    // Actively sample 20 readings with strict per-sample and total timeout handling
+    const int SAMPLES_TARGET = 20;
+    long samples[SAMPLES_TARGET];
+    int count = 0;
+    unsigned long samplingStart = millis();
+    const unsigned long TOTAL_TIMEOUT_MS = 3000; // 3 seconds maximum total sampling window
+
+    while (count < SAMPLES_TARGET && (millis() - samplingStart < TOTAL_TIMEOUT_MS)) {
+      // Wait for HX711 to indicate data ready with 150ms timeout per sample
+      if (waitHX711Ready(150)) {
+        long val = readHX711Raw();
+        samples[count++] = val;
+
+        // Also update the sliding buffer so live monitoring and auto-leveling stay current
+        rawSamples[sampleIndex] = val;
+        sampleIndex = (sampleIndex + 1) % SAMPLE_WINDOW;
+        if (sampleIndex == 0) bufferFilled = true;
+
+        // Stream raw telemetry value to maintain continuous dashboard feed
+        Serial.print("RAW,");
+        Serial.println(val);
+
+        // Small delay between acquisitions to allow HX711 conversion cycle
+        delay(10);
+      } else {
+        // Feed watchdog and give processor a chance to handle background tasks
+        yield();
+        delay(5);
+      }
+    }
+
+    // If timeout occurred and fewer than 20 samples were actively acquired:
+    if (count < SAMPLES_TARGET) {
+      // Fallback: fill remaining slots from the sliding window buffer if available
+      int slidingAvailable = bufferFilled ? SAMPLE_WINDOW : sampleIndex;
+      if (slidingAvailable > 0) {
+        for (int i = 0; i < slidingAvailable && count < SAMPLES_TARGET; i++) {
+          samples[count++] = rawSamples[i];
+        }
+      }
+    }
+
+    // If still 0 samples, the HX711 hardware is disconnected or unresponsive
+    if (count == 0) {
+      Serial.println("ERROR,HX711 sensor hardware not responding during calibration sampling");
+      Serial.println("CAL_REJECTED,NO_HARDWARE_RESPONSE");
+      return;
+    }
+
+    long minVal = samples[0];
+    long maxVal = samples[0];
+    long sum = 0;
     for (int i = 0; i < count; i++) {
-      long val = rawSamples[i];
+      long val = samples[i];
       if (val < minVal) minVal = val;
       if (val > maxVal) maxVal = val;
       sum += val;
@@ -256,8 +328,13 @@ void processCommand(const String& cmd) {
     long avgVal = sum / count;
     long rangeVal = maxVal - minVal;
 
+    // Report CAL_RESULT: CAL_RESULT,<ml>,<average>,<minimum>,<maximum>,<range>
     Serial.print("CAL_RESULT,");
-    Serial.print(ml);
+    if (ml == (long)ml) {
+      Serial.print((long)ml);
+    } else {
+      Serial.print(ml, 1);
+    }
     Serial.print(",");
     Serial.print(avgVal);
     Serial.print(",");
@@ -267,7 +344,7 @@ void processCommand(const String& cmd) {
     Serial.print(",");
     Serial.println(rangeVal);
 
-    if (rangeVal > STABILITY_THRESHOLD) {
+    if (rangeVal > maxAllowedRange) {
       Serial.println("CAL_REJECTED,UNSTABLE");
       return;
     }

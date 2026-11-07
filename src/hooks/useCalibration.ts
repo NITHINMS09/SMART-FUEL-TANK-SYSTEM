@@ -48,29 +48,38 @@ export function useCalibration() {
   // Subscribe to ESP32 responses
   useEffect(() => {
     const unsubscribe = serialService.subscribe((event: SerialEvent) => {
+      // 0. Handle Disconnection during active calibration
+      if (event.type === 'STATE_CHANGED' && event.state !== 'CONNECTED') {
+        if (sessionRef.current?.timeoutId) {
+          clearTimeout(sessionRef.current.timeoutId);
+        }
+        sessionRef.current = null;
+        setIsCalibrating(false);
+        setCalProcessingStatus('ESP32 disconnected.');
+        return;
+      }
+
       // Log all serial traffic relevant to calibration
       if (event.type === 'RAW_MESSAGE') {
         const msg = event.message;
-        if (msg.direction === 'TX' && msg.text.startsWith('CAL,')) {
-          addDebugLog('TX', `Sent command: ${msg.text}`);
-        } else if (
-          msg.direction === 'RX' &&
-          (msg.text.startsWith('CAL_') ||
-            msg.text.startsWith('CALIBRATION_') ||
-            msg.text.startsWith('ERROR'))
-        ) {
-          addDebugLog('RX', `Received: ${msg.text}`);
+        const upperText = msg.text.trim().toUpperCase();
+        if (msg.direction === 'TX') {
+          if (upperText.startsWith('CAL,') || upperText === 'GET_DATA') {
+            addDebugLog('TX', `[TX] ${msg.text}`);
+          }
+        } else if (msg.direction === 'RX') {
+          if (
+            upperText.startsWith('CAL_') ||
+            upperText.startsWith('CALIBRATION_') ||
+            upperText.startsWith('ERROR')
+          ) {
+            addDebugLog('RX', `[RX] ${msg.text}`);
+          }
         }
       }
 
       // 1. CAL_RESULT: parsed statistics from ESP32
       if (event.type === 'CAL_RESULT') {
-        // Clear timeout timer
-        if (sessionRef.current?.timeoutId) {
-          clearTimeout(sessionRef.current.timeoutId);
-          sessionRef.current.timeoutId = undefined;
-        }
-
         const resData: CalResultData = {
           volumeMl: event.ml,
           averageRaw: event.average,
@@ -80,9 +89,29 @@ export function useCalibration() {
           timestamp: Date.now(),
         };
 
-        // Update ref synchronously so subsequent events in the same tick have immediate access
+        // Update UI immediately (Requirement 7)
+        setLatestCalResult(resData);
+        setCalibrationError(null);
+        const statusMsg = `CAL_RESULT received: Volume=${event.ml} ml, Average=${event.average}, Min=${event.minimum}, Max=${event.maximum}, Range=${event.range}`;
+        setCalProcessingStatus(statusMsg);
+        addDebugLog('STATUS', statusMsg, resData);
+
+        // Update synchronous session reference
         if (sessionRef.current) {
           sessionRef.current.latestResult = resData;
+
+          // Clear initial command timeout and start a 4-second confirmation timeout for CAL_ACCEPTED / CAL_REJECTED
+          if (sessionRef.current.timeoutId) {
+            clearTimeout(sessionRef.current.timeoutId);
+          }
+          sessionRef.current.timeoutId = setTimeout(() => {
+            setIsCalibrating(false);
+            const errMsg = 'Timeout waiting for ESP32 confirmation (CAL_ACCEPTED / CAL_REJECTED) after CAL_RESULT.';
+            setCalibrationError(errMsg);
+            setCalProcessingStatus(errMsg);
+            addDebugLog('TIMEOUT', errMsg);
+            sessionRef.current = null;
+          }, 4000);
         } else {
           sessionRef.current = {
             volumeMl: event.ml,
@@ -90,16 +119,9 @@ export function useCalibration() {
             startTime: Date.now(),
           };
         }
-
-        // Update UI immediately (Requirement 7)
-        setLatestCalResult(resData);
-        setCalibrationError(null);
-        const statusMsg = `CAL_RESULT received: Volume=${event.ml} ml, Average=${event.average}, Min=${event.minimum}, Max=${event.maximum}, Range=${event.range}`;
-        setCalProcessingStatus(statusMsg);
-        addDebugLog('STATUS', statusMsg, resData);
       }
 
-      // 2. CAL_ACCEPTED: firmware confirmed reading stability and accepted calibration point
+      // 2. CAL_ACCEPTED: firmware confirmed reading stability and saved calibration point to NVS
       else if (event.type === 'CAL_ACCEPTED') {
         if (sessionRef.current?.timeoutId) {
           clearTimeout(sessionRef.current.timeoutId);
@@ -134,6 +156,8 @@ export function useCalibration() {
           return sortCalibrationPoints([...filtered, confirmedPoint]);
         });
 
+        // Reset calibrating state & release session ref
+        sessionRef.current = null;
         setIsCalibrating(false);
         setCalibrationError(null);
         const acceptedMsg = `CAL_ACCEPTED: Reference point for ${vol} ml accepted and saved by ESP32 firmware!`;
@@ -163,15 +187,29 @@ export function useCalibration() {
           clearTimeout(sessionRef.current.timeoutId);
           sessionRef.current.timeoutId = undefined;
         }
+        sessionRef.current = null;
         setIsCalibrating(false);
         const errMsg = `CAL_REJECTED by ESP32 firmware: ${event.reason || 'UNSTABLE'}. Sensor readings fluctuated beyond stability threshold. Allow liquid to settle.`;
         setCalibrationError(errMsg);
         setCalProcessingStatus(errMsg);
         addDebugLog('ERROR', errMsg);
-        sessionRef.current = null;
       }
 
-      // 6. CAL_POINT: synchronization response from GET_DATA
+      // 6. ERROR: ESP32 hardware or command error
+      else if (event.type === 'ERROR') {
+        if (sessionRef.current?.timeoutId) {
+          clearTimeout(sessionRef.current.timeoutId);
+          sessionRef.current.timeoutId = undefined;
+        }
+        sessionRef.current = null;
+        setIsCalibrating(false);
+        const errMsg = `ESP32 Hardware Error: ${event.message}`;
+        setCalibrationError(errMsg);
+        setCalProcessingStatus(errMsg);
+        addDebugLog('ERROR', errMsg);
+      }
+
+      // 7. CAL_POINT: synchronization response from GET_DATA
       else if (event.type === 'CAL_POINT') {
         setPoints((prev) => {
           const exists = prev.some((p) => Math.abs(p.volumeMl - event.ml) < 0.001 && p.averageRaw === event.average);
@@ -196,6 +234,21 @@ export function useCalibration() {
   }, [addDebugLog]);
 
   /**
+   * Cancel calibration sampling manually and unlock UI
+   */
+  const cancelCalibration = useCallback(() => {
+    if (sessionRef.current?.timeoutId) {
+      clearTimeout(sessionRef.current.timeoutId);
+    }
+    sessionRef.current = null;
+    setIsCalibrating(false);
+    const cancelMsg = 'Calibration sampling cancelled by user. Ready for new command.';
+    setCalibrationError(cancelMsg);
+    setCalProcessingStatus(cancelMsg);
+    addDebugLog('STATUS', cancelMsg);
+  }, [addDebugLog]);
+
+  /**
    * Initiate calibration: Sends CAL,<ml> directly to ESP32.
    * Continuous serial reader is kept running without interruption or duplicate reader locks.
    */
@@ -203,6 +256,12 @@ export function useCalibration() {
     async (volumeMl: number, _recentReadings?: RawReading[], _threshold?: number) => {
       setCalibrationError(null);
       setLastSavedMessage(null);
+
+      // Prevent duplicate calibration triggers
+      if (isCalibrating || sessionRef.current !== null) {
+        console.warn('[Calibration] Calibration capture already in progress. Ignoring duplicate call.');
+        return false;
+      }
 
       if (volumeMl < 0 || isNaN(volumeMl)) {
         const err = 'Volume must be a non-negative number in ml.';
@@ -218,15 +277,13 @@ export function useCalibration() {
         return false;
       }
 
-      // Clear any prior timeout
-      if (sessionRef.current?.timeoutId) {
-        clearTimeout(sessionRef.current.timeoutId);
-      }
+      const volStr = Number.isInteger(volumeMl) ? volumeMl.toString() : volumeMl.toFixed(1);
+      const cmdToSend = `CAL,${volStr}`;
 
       setIsCalibrating(true);
-      const startMsg = `Transmitting CAL,${Math.round(volumeMl)} to ESP32...`;
+      const startMsg = `Transmitting ${cmdToSend} to ESP32...`;
       setCalProcessingStatus(startMsg);
-      addDebugLog('TX', `Initiating calibration: CAL,${Math.round(volumeMl)}`);
+      addDebugLog('TX', `Initiating calibration: ${cmdToSend}`);
 
       // Initialize session ref
       sessionRef.current = {
@@ -234,22 +291,21 @@ export function useCalibration() {
         startTime: Date.now(),
       };
 
-      // 6-second response timeout
+      // 8-second response timeout (ESP32 samples 20 readings in ~2s)
       const timeoutId = setTimeout(() => {
-        if (sessionRef.current) {
-          setIsCalibrating(false);
-          const timeoutMsg = `Calibration Timeout: No CAL_RESULT response received from ESP32 for CAL,${Math.round(volumeMl)} after 6 seconds. Verify USB connection.`;
-          setCalibrationError(timeoutMsg);
-          setCalProcessingStatus(timeoutMsg);
-          addDebugLog('TIMEOUT', timeoutMsg);
-          sessionRef.current = null;
-        }
-      }, 6000);
+        setIsCalibrating(false);
+        const timeoutMsg = `Calibration Timeout: No CAL_RESULT response received from ESP32 for '${cmdToSend}' after 8 seconds. Verify USB connection.`;
+        setCalibrationError(timeoutMsg);
+        setCalProcessingStatus(timeoutMsg);
+        addDebugLog('TIMEOUT', timeoutMsg);
+        sessionRef.current = null;
+      }, 8000);
 
       sessionRef.current.timeoutId = timeoutId;
 
       try {
-        await serialService.sendCommand(`CAL,${Math.round(volumeMl)}`);
+        await serialService.sendCommand(cmdToSend);
+        setCalProcessingStatus(`Sampling 20 readings on ESP32 for ${volStr} ml...`);
         return true;
       } catch (err: any) {
         if (sessionRef.current?.timeoutId) {
@@ -264,7 +320,7 @@ export function useCalibration() {
         return false;
       }
     },
-    [points, addDebugLog]
+    [points, isCalibrating, addDebugLog]
   );
 
   /**
@@ -305,6 +361,7 @@ export function useCalibration() {
     calProcessingStatus,
     debugLogs,
     startCalibrationCapture,
+    cancelCalibration,
     deletePoint,
     updatePoint,
     replaceAllPoints,
