@@ -446,7 +446,7 @@ export class SerialService {
     this.lineBuffer = lines.pop() || '';
 
     for (const rawLine of lines) {
-      const line = rawLine.trim();
+      const line = rawLine.replace(/\r/g, '').trim();
       if (line.length > 0) {
         this.handleIncomingLine(line);
       }
@@ -464,8 +464,8 @@ export class SerialService {
       text: line,
     };
 
-    const parts = line.split(',');
-    const cmd = parts[0].trim();
+    const parts = line.split(',').map((p) => p.trim());
+    const cmd = parts[0].toUpperCase();
 
     if (cmd === 'RAW') {
       const raw = parseFloat(parts[1]);
@@ -480,7 +480,16 @@ export class SerialService {
       const max = parseFloat(parts[4]);
       const rng = parseFloat(parts[5]);
       logItem.parsedType = 'CAL_RESULT';
-      this.notify({ type: 'CAL_RESULT', ml, average: avg, minimum: min, maximum: max, range: rng });
+      if (!isNaN(ml) && !isNaN(avg)) {
+        this.notify({
+          type: 'CAL_RESULT',
+          ml,
+          average: avg,
+          minimum: isNaN(min) ? avg : min,
+          maximum: isNaN(max) ? avg : max,
+          range: isNaN(rng) ? 0 : rng,
+        });
+      }
     } else if (cmd === 'CAL_ACCEPTED') {
       logItem.parsedType = 'CAL_ACCEPTED';
       this.notify({ type: 'CAL_ACCEPTED' });

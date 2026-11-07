@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Scale, Play, CheckCircle2, AlertTriangle, RefreshCw, Zap } from 'lucide-react';
-import { LoadCellStats, RawReading, ConnectionState } from '../../types';
+import { Scale, Play, CheckCircle2, AlertTriangle, RefreshCw, Radio, Check } from 'lucide-react';
+import { LoadCellStats, RawReading, ConnectionState, CalResultData } from '../../types';
 import { formatNumber } from '../../utils/formatters';
 import { StatusBadge } from '../common/StatusBadge';
 
@@ -11,6 +11,8 @@ interface CalibrationFormProps {
   isCalibrating: boolean;
   calibrationError: string | null;
   lastSavedMessage: string | null;
+  latestCalResult: CalResultData | null;
+  calProcessingStatus: string;
   stabilityThreshold: number;
   onStartCalibration: (volumeMl: number) => Promise<boolean>;
 }
@@ -22,6 +24,8 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
   isCalibrating,
   calibrationError,
   lastSavedMessage,
+  latestCalResult,
+  calProcessingStatus,
   stabilityThreshold,
   onStartCalibration,
 }) => {
@@ -31,7 +35,6 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
   const parsedVolume = parseFloat(volumeInput);
   const isValidVolume = !isNaN(parsedVolume) && parsedVolume >= 0;
   const isConnected = connectionState === 'CONNECTED';
-  const hasEnoughSamples = recentReadings.length >= 20;
   const isStable = stats.stability === 'STABLE';
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -52,7 +55,7 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
               Calibrate Known Reference Point
             </h2>
             <p className="text-xs text-slate-400 font-mono">
-              Captures 20 live raw samples, verifies reading stability, and registers with ESP32 NVS
+              Sends CAL,&lt;ml&gt; to ESP32 to compute 20-sample average, verify stability, and save directly to NVS
             </p>
           </div>
         </div>
@@ -83,20 +86,21 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
               </span>
             </div>
 
+            {/* Requirement 1: Click Capture 20 Readings to send CAL,<ml> */}
             <button
               type="submit"
-              disabled={!isConnected || !isValidVolume || !hasEnoughSamples || isCalibrating}
+              disabled={!isConnected || !isValidVolume || isCalibrating}
               className="px-6 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-mono font-bold text-xs uppercase tracking-wider flex items-center space-x-2 shadow-glow-cyan transition-all"
             >
               {isCalibrating ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Awaiting ESP32...</span>
+                  <span>Sampling on ESP32...</span>
                 </>
               ) : (
                 <>
                   <Play className="w-4 h-4 fill-current" />
-                  <span>Capture & Calibrate</span>
+                  <span>Capture 20 Readings</span>
                 </>
               )}
             </button>
@@ -122,46 +126,97 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
           </div>
         </div>
 
-        {/* Step 2: Live Sensor Window Metrics */}
+        {/* Live Hardware Status and Protocol Banner */}
+        <div className="px-3.5 py-2 rounded-lg bg-[#070c18] border border-slate-800 flex items-center justify-between text-xs font-mono">
+          <div className="flex items-center space-x-2">
+            <span className="text-slate-500 uppercase text-[10px] font-semibold">Command:</span>
+            <code className="text-cyan-400 font-bold">
+              CAL,{isValidVolume ? Math.round(parsedVolume) : '...'}
+            </code>
+          </div>
+          <div className="text-slate-400 text-[11px]">
+            <span>Active Status: </span>
+            <span className="text-cyan-300">{calProcessingStatus}</span>
+          </div>
+        </div>
+
+        {/* Requirement 7: Latest CAL_RESULT from ESP32 immediately rendered */}
+        {latestCalResult && (
+          <div className="bg-[#081020] border border-cyan-500/50 rounded-lg p-4 space-y-3 animate-fadeIn">
+            <div className="flex items-center justify-between border-b border-cyan-900/50 pb-2">
+              <span className="text-xs font-mono font-bold uppercase text-cyan-300 flex items-center space-x-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Firmware CAL_RESULT Response (Verified)</span>
+              </span>
+              <span className="text-[10px] font-mono text-slate-400">
+                Volume Reference: <strong className="text-cyan-400">{latestCalResult.volumeMl} ml</strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
+              <div className="bg-[#0b162c] p-2.5 rounded border border-cyan-900/60">
+                <span className="text-slate-400 text-[10px] uppercase">ESP32 20-Sample Average</span>
+                <p className="text-white font-bold text-sm mt-0.5">
+                  {formatNumber(latestCalResult.averageRaw)}
+                </p>
+              </div>
+
+              <div className="bg-[#0b162c] p-2.5 rounded border border-cyan-900/60">
+                <span className="text-slate-400 text-[10px] uppercase">Minimum Raw</span>
+                <p className="text-slate-300 text-sm mt-0.5">
+                  {formatNumber(latestCalResult.minimum)}
+                </p>
+              </div>
+
+              <div className="bg-[#0b162c] p-2.5 rounded border border-cyan-900/60">
+                <span className="text-slate-400 text-[10px] uppercase">Maximum Raw</span>
+                <p className="text-slate-300 text-sm mt-0.5">
+                  {formatNumber(latestCalResult.maximum)}
+                </p>
+              </div>
+
+              <div className="bg-[#0b162c] p-2.5 rounded border border-cyan-900/60">
+                <span className="text-slate-400 text-[10px] uppercase">Raw Spread (Range)</span>
+                <p
+                  className={`text-sm font-bold mt-0.5 ${
+                    latestCalResult.range <= stabilityThreshold
+                      ? 'text-emerald-400'
+                      : 'text-amber-400'
+                  }`}
+                >
+                  {formatNumber(latestCalResult.range)} units
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Live Sensor Telemetry Window Summary */}
         <div className="bg-[#070c18] border border-slate-800/80 rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between text-xs font-mono text-slate-400 font-semibold">
-            <span>Live 20-Sample Sliding Window</span>
+            <span>Continuous Telemetry Stream</span>
             <span className="text-cyan-400">
-              Samples: {recentReadings.length >= 20 ? '20 / 20' : `${recentReadings.length} / 20`}
+              Live Raw: <strong className="text-white">{formatNumber(stats.currentRaw)}</strong>
             </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 font-mono text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
             <div className="bg-[#0b1222] p-2.5 rounded border border-slate-800">
-              <span className="text-slate-500 text-[10px] uppercase">Current Raw</span>
-              <p className="text-cyan-300 font-bold text-sm mt-0.5">
-                {formatNumber(stats.currentRaw)}
-              </p>
-            </div>
-
-            <div className="bg-[#0b1222] p-2.5 rounded border border-slate-800">
-              <span className="text-slate-500 text-[10px] uppercase">Average Raw</span>
+              <span className="text-slate-500 text-[10px] uppercase">Sliding Avg</span>
               <p className="text-white font-bold text-sm mt-0.5">
                 {formatNumber(stats.average)}
               </p>
             </div>
 
             <div className="bg-[#0b1222] p-2.5 rounded border border-slate-800">
-              <span className="text-slate-500 text-[10px] uppercase">Minimum</span>
+              <span className="text-slate-500 text-[10px] uppercase">Min / Max</span>
               <p className="text-slate-300 text-sm mt-0.5">
-                {formatNumber(stats.minimum)}
+                {formatNumber(stats.minimum)} / {formatNumber(stats.maximum)}
               </p>
             </div>
 
             <div className="bg-[#0b1222] p-2.5 rounded border border-slate-800">
-              <span className="text-slate-500 text-[10px] uppercase">Maximum</span>
-              <p className="text-slate-300 text-sm mt-0.5">
-                {formatNumber(stats.maximum)}
-              </p>
-            </div>
-
-            <div className="bg-[#0b1222] p-2.5 rounded border border-slate-800">
-              <span className="text-slate-500 text-[10px] uppercase">Range (Spread)</span>
+              <span className="text-slate-500 text-[10px] uppercase">Live Spread</span>
               <p
                 className={`text-sm font-bold mt-0.5 ${
                   stats.range !== null && stats.range <= stabilityThreshold
@@ -169,32 +224,16 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
                     : 'text-amber-400'
                 }`}
               >
-                {formatNumber(stats.range)}
+                {formatNumber(stats.range)} units
               </p>
             </div>
-          </div>
 
-          {/* Stability Warning / Status */}
-          <div className="flex items-center justify-between text-xs font-mono pt-1">
-            <div className="flex items-center space-x-2">
-              {isStable ? (
-                <div className="flex items-center space-x-1.5 text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Readings STABLE (Range {stats.range} ≤ {stabilityThreshold})</span>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-1.5 text-amber-400">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>
-                    Readings UNSTABLE (Range {stats.range ?? 0} &gt; {stabilityThreshold}). Allow liquid to settle.
-                  </span>
-                </div>
-              )}
+            <div className="bg-[#0b1222] p-2.5 rounded border border-slate-800">
+              <span className="text-slate-500 text-[10px] uppercase">Stream Stability</span>
+              <div className="mt-1">
+                <StatusBadge status={stats.stability} size="sm" />
+              </div>
             </div>
-
-            <span className="text-slate-500 text-[11px]">
-              Protocol: <code className="text-cyan-400">CAL,{isValidVolume ? parsedVolume : '...'}</code>
-            </span>
           </div>
         </div>
 
@@ -226,4 +265,3 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
     </div>
   );
 };
-

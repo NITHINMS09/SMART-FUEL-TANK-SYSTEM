@@ -42,6 +42,23 @@ export interface CalibrationPoint {
   syncedToESP: boolean;
 }
 
+export interface CalResultData {
+  volumeMl: number;
+  averageRaw: number;
+  minimum: number;
+  maximum: number;
+  range: number;
+  timestamp: number;
+}
+
+export interface CalibrationDebugLog {
+  id: string;
+  timestamp: number;
+  type: 'TX' | 'RX' | 'STATUS' | 'ERROR' | 'TIMEOUT';
+  message: string;
+  payload?: any;
+}
+
 export interface MotorProfile {
   id: string;
   volumeMl: number;
@@ -128,4 +145,3 @@ export interface ProfileInterpolationResult {
   lowerProfile?: MotorProfile;
   upperProfile?: MotorProfile;
 }
-

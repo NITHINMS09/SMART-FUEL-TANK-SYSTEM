@@ -272,20 +272,30 @@ void processCommand(const String& cmd) {
       return;
     }
 
-    // Save calibration point
-    if (calPointCount < MAX_CALIBRATION_POINTS) {
-      calPoints[calPointCount].volumeMl = ml;
-      calPoints[calPointCount].averageRaw = avgVal;
-      calPoints[calPointCount].minRaw = minVal;
-      calPoints[calPointCount].maxRaw = maxVal;
-      calPoints[calPointCount].rangeRaw = rangeVal;
-      calPointCount++;
+    // Check if updating existing point for this volume or adding a new one
+    int targetIdx = calPointCount;
+    for (int i = 0; i < calPointCount; i++) {
+      if (abs(calPoints[i].volumeMl - ml) < 0.1) {
+        targetIdx = i;
+        break;
+      }
+    }
+
+    if (targetIdx < MAX_CALIBRATION_POINTS) {
+      calPoints[targetIdx].volumeMl = ml;
+      calPoints[targetIdx].averageRaw = avgVal;
+      calPoints[targetIdx].minRaw = minVal;
+      calPoints[targetIdx].maxRaw = maxVal;
+      calPoints[targetIdx].rangeRaw = rangeVal;
+      if (targetIdx == calPointCount) {
+        calPointCount++;
+      }
     } else {
-      calPoints[calPointCount - 1].volumeMl = ml;
-      calPoints[calPointCount - 1].averageRaw = avgVal;
-      calPoints[calPointCount - 1].minRaw = minVal;
-      calPoints[calPointCount - 1].maxRaw = maxVal;
-      calPoints[calPointCount - 1].rangeRaw = rangeVal;
+      calPoints[MAX_CALIBRATION_POINTS - 1].volumeMl = ml;
+      calPoints[MAX_CALIBRATION_POINTS - 1].averageRaw = avgVal;
+      calPoints[MAX_CALIBRATION_POINTS - 1].minRaw = minVal;
+      calPoints[MAX_CALIBRATION_POINTS - 1].maxRaw = maxVal;
+      calPoints[MAX_CALIBRATION_POINTS - 1].rangeRaw = rangeVal;
     }
 
     saveCalibrationToNVS();
@@ -517,3 +527,4 @@ int findProfileCloseAngle(float volumeMl, int& outDirection) {
   outDirection = motorProfiles[bestIdx].closeCW;
   return motorProfiles[bestIdx].closeDegrees;
 }
+

@@ -1,9 +1,17 @@
-import React, { useState } from 'react';
-import { Scale, Download, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { CalibrationPoint, ConnectionState, LoadCellStats, RawReading } from '../types';
+import React from 'react';
+import { Scale } from 'lucide-react';
+import {
+  CalibrationPoint,
+  ConnectionState,
+  LoadCellStats,
+  RawReading,
+  CalResultData,
+  CalibrationDebugLog,
+} from '../types';
 import { CalibrationForm } from '../components/calibration/CalibrationForm';
 import { CalibrationTable } from '../components/calibration/CalibrationTable';
 import { CalibrationCurve } from '../components/calibration/CalibrationCurve';
+import { CalibrationDebugConsole } from '../components/calibration/CalibrationDebugConsole';
 import { StorageService } from '../services/storageService';
 
 interface CalibrationPageProps {
@@ -14,6 +22,10 @@ interface CalibrationPageProps {
   isCalibrating: boolean;
   calibrationError: string | null;
   lastSavedMessage: string | null;
+  latestCalResult: CalResultData | null;
+  calProcessingStatus: string;
+  debugLogs: CalibrationDebugLog[];
+  onClearDebugLogs: () => void;
   stabilityThreshold: number;
   onStartCalibration: (volumeMl: number) => Promise<boolean>;
   onDeletePoint: (id: string) => Promise<void>;
@@ -29,18 +41,18 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
   isCalibrating,
   calibrationError,
   lastSavedMessage,
+  latestCalResult,
+  calProcessingStatus,
+  debugLogs,
+  onClearDebugLogs,
   stabilityThreshold,
   onStartCalibration,
   onDeletePoint,
   onUpdatePoint,
   currentEstimatedVolume,
 }) => {
-  const [recalibratingVolume, setRecalibratingVolume] = useState<number | null>(null);
-
   const handleRecalibrate = async (volume: number) => {
-    setRecalibratingVolume(volume);
     await onStartCalibration(volume);
-    setRecalibratingVolume(null);
   };
 
   const handleExportPoints = () => {
@@ -58,11 +70,21 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
         isCalibrating={isCalibrating}
         calibrationError={calibrationError}
         lastSavedMessage={lastSavedMessage}
+        latestCalResult={latestCalResult}
+        calProcessingStatus={calProcessingStatus}
         stabilityThreshold={stabilityThreshold}
         onStartCalibration={onStartCalibration}
       />
 
-      {/* 2. Calibration Curve Visualizer */}
+      {/* 2. Requirement 10: Dedicated Serial Communication Debug Console */}
+      <CalibrationDebugConsole
+        logs={debugLogs}
+        onClearLogs={onClearDebugLogs}
+        isCalibrating={isCalibrating}
+        statusText={calProcessingStatus}
+      />
+
+      {/* 3. Calibration Curve Visualizer */}
       <div className="panel-glass rounded-xl p-6 border-slate-800 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
           <div className="flex items-center space-x-2">
@@ -88,7 +110,7 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
         />
       </div>
 
-      {/* 3. Calibration Points Table */}
+      {/* 4. Calibration Points Table */}
       <CalibrationTable
         points={points}
         onDeletePoint={onDeletePoint}
@@ -99,4 +121,3 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
     </div>
   );
 };
-

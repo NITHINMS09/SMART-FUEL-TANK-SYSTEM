@@ -50,10 +50,14 @@ export function App() {
     isCalibrating,
     calibrationError,
     lastSavedMessage,
+    latestCalResult,
+    calProcessingStatus,
+    debugLogs,
     startCalibrationCapture,
     deletePoint,
     updatePoint,
     replaceAllPoints,
+    clearDebugLogs,
   } = useCalibration();
 
   // Motor Profiles Hook
@@ -206,10 +210,12 @@ export function App() {
               isCalibrating={isCalibrating}
               calibrationError={calibrationError}
               lastSavedMessage={lastSavedMessage}
+              latestCalResult={latestCalResult}
+              calProcessingStatus={calProcessingStatus}
+              debugLogs={debugLogs}
+              onClearDebugLogs={clearDebugLogs}
               stabilityThreshold={stabilityThreshold}
-              onStartCalibration={(vol) =>
-                startCalibrationCapture(vol, readings, stabilityThreshold)
-              }
+              onStartCalibration={(vol) => startCalibrationCapture(vol)}
               onDeletePoint={deletePoint}
               onUpdatePoint={updatePoint}
               currentEstimatedVolume={volumeInterpolation.volumeMl}

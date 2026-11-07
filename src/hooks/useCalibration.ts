@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { serialService, SerialEvent } from '../services/serialService';
 import { StorageService } from '../services/storageService';
 import { sortCalibrationPoints, MAX_CALIBRATION_POINTS } from '../services/calibrationService';
-import { CalibrationPoint, RawReading } from '../types';
+import { CalibrationPoint, CalResultData, CalibrationDebugLog, RawReading } from '../types';
 
 export function useCalibration() {
   const [points, setPoints] = useState<CalibrationPoint[]>(() => {
@@ -10,55 +10,171 @@ export function useCalibration() {
   });
   const [isCalibrating, setIsCalibrating] = useState<boolean>(false);
   const [calibrationError, setCalibrationError] = useState<string | null>(null);
-  const [pendingPoint, setPendingPoint] = useState<CalibrationPoint | null>(null);
   const [lastSavedMessage, setLastSavedMessage] = useState<string | null>(null);
+  const [latestCalResult, setLatestCalResult] = useState<CalResultData | null>(null);
+  const [calProcessingStatus, setCalProcessingStatus] = useState<string>('Ready for calibration command.');
+  const [debugLogs, setDebugLogs] = useState<CalibrationDebugLog[]>([]);
 
-  // Sync state to storage
+  // Synchronous session ref to guarantee data survives across microsecond event batches without closure lag
+  const sessionRef = useRef<{
+    volumeMl: number;
+    latestResult?: CalResultData;
+    timeoutId?: any;
+    startTime: number;
+  } | null>(null);
+
+  // Sync points state to persistent browser storage
   useEffect(() => {
     StorageService.saveCalibrationPoints(points);
   }, [points]);
 
+  const addDebugLog = useCallback((type: CalibrationDebugLog['type'], message: string, payload?: any) => {
+    setDebugLogs((prev) => [
+      ...prev.slice(-199), // Keep latest 200 logs
+      {
+        id: Math.random().toString(36).substring(2, 9),
+        timestamp: Date.now(),
+        type,
+        message,
+        payload,
+      },
+    ]);
+  }, []);
+
+  const clearDebugLogs = useCallback(() => {
+    setDebugLogs([]);
+  }, []);
+
   // Subscribe to ESP32 responses
   useEffect(() => {
     const unsubscribe = serialService.subscribe((event: SerialEvent) => {
-      if (event.type === 'CAL_ACCEPTED') {
-        setPoints((prev) => {
-          if (!pendingPoint) return prev;
-          const updated = prev.filter((p) => p.volumeMl !== pendingPoint.volumeMl);
-          const confirmed: CalibrationPoint = {
-            ...pendingPoint,
-            status: 'CONFIRMED',
-            syncedToESP: true,
+      // Log all serial traffic relevant to calibration
+      if (event.type === 'RAW_MESSAGE') {
+        const msg = event.message;
+        if (msg.direction === 'TX' && msg.text.startsWith('CAL,')) {
+          addDebugLog('TX', `Sent command: ${msg.text}`);
+        } else if (
+          msg.direction === 'RX' &&
+          (msg.text.startsWith('CAL_') ||
+            msg.text.startsWith('CALIBRATION_') ||
+            msg.text.startsWith('ERROR'))
+        ) {
+          addDebugLog('RX', `Received: ${msg.text}`);
+        }
+      }
+
+      // 1. CAL_RESULT: parsed statistics from ESP32
+      if (event.type === 'CAL_RESULT') {
+        // Clear timeout timer
+        if (sessionRef.current?.timeoutId) {
+          clearTimeout(sessionRef.current.timeoutId);
+          sessionRef.current.timeoutId = undefined;
+        }
+
+        const resData: CalResultData = {
+          volumeMl: event.ml,
+          averageRaw: event.average,
+          minimum: event.minimum,
+          maximum: event.maximum,
+          range: event.range,
+          timestamp: Date.now(),
+        };
+
+        // Update ref synchronously so subsequent events in the same tick have immediate access
+        if (sessionRef.current) {
+          sessionRef.current.latestResult = resData;
+        } else {
+          sessionRef.current = {
+            volumeMl: event.ml,
+            latestResult: resData,
+            startTime: Date.now(),
           };
-          return sortCalibrationPoints([...updated, confirmed]);
+        }
+
+        // Update UI immediately (Requirement 7)
+        setLatestCalResult(resData);
+        setCalibrationError(null);
+        const statusMsg = `CAL_RESULT received: Volume=${event.ml} ml, Average=${event.average}, Min=${event.minimum}, Max=${event.maximum}, Range=${event.range}`;
+        setCalProcessingStatus(statusMsg);
+        addDebugLog('STATUS', statusMsg, resData);
+      }
+
+      // 2. CAL_ACCEPTED: firmware confirmed reading stability and accepted calibration point
+      else if (event.type === 'CAL_ACCEPTED') {
+        if (sessionRef.current?.timeoutId) {
+          clearTimeout(sessionRef.current.timeoutId);
+          sessionRef.current.timeoutId = undefined;
+        }
+
+        // Retrieve latest result from synchronous ref
+        const activeResult = sessionRef.current?.latestResult;
+        const targetVol = sessionRef.current?.volumeMl ?? activeResult?.volumeMl ?? 0;
+
+        const avg = activeResult ? activeResult.averageRaw : 0;
+        const min = activeResult ? activeResult.minimum : avg;
+        const max = activeResult ? activeResult.maximum : avg;
+        const range = activeResult ? activeResult.range : max - min;
+        const vol = activeResult ? activeResult.volumeMl : targetVol;
+
+        const confirmedPoint: CalibrationPoint = {
+          id: Math.random().toString(36).substring(2, 9),
+          volumeMl: vol,
+          averageRaw: avg,
+          minimum: min,
+          maximum: max,
+          range,
+          status: 'CONFIRMED',
+          timestamp: Date.now(),
+          syncedToESP: true,
+        };
+
+        // Update points in state immediately
+        setPoints((prev) => {
+          const filtered = prev.filter((p) => Math.abs(p.volumeMl - vol) > 0.001);
+          return sortCalibrationPoints([...filtered, confirmedPoint]);
         });
-        setPendingPoint(null);
+
         setIsCalibrating(false);
         setCalibrationError(null);
-        setLastSavedMessage('Calibration accepted and verified by ESP32!');
-      } else if (event.type === 'CAL_REJECTED') {
+        const acceptedMsg = `CAL_ACCEPTED: Reference point for ${vol} ml accepted and saved by ESP32 firmware!`;
+        setLastSavedMessage(acceptedMsg);
+        setCalProcessingStatus(acceptedMsg);
+        addDebugLog('STATUS', acceptedMsg);
+      }
+
+      // 3. CALIBRATION_SAVED: firmware confirmed permanent save to ESP32 Preferences/NVS
+      else if (event.type === 'CALIBRATION_SAVED') {
+        const savedMsg = 'CALIBRATION_SAVED: Permanent flash NVS write confirmed by ESP32.';
+        setLastSavedMessage(savedMsg);
+        setCalProcessingStatus(savedMsg);
+        addDebugLog('STATUS', savedMsg);
+      }
+
+      // 4. CALIBRATION_COUNT: number of points stored in ESP32 NVS
+      else if (event.type === 'CALIBRATION_COUNT') {
+        const countMsg = `CALIBRATION_COUNT: ESP32 NVS now contains ${event.count} calibration points.`;
+        setCalProcessingStatus(countMsg);
+        addDebugLog('STATUS', countMsg);
+      }
+
+      // 5. CAL_REJECTED: firmware rejected calibration due to instability
+      else if (event.type === 'CAL_REJECTED') {
+        if (sessionRef.current?.timeoutId) {
+          clearTimeout(sessionRef.current.timeoutId);
+          sessionRef.current.timeoutId = undefined;
+        }
         setIsCalibrating(false);
-        setPendingPoint(null);
-        setCalibrationError(`Calibration REJECTED by ESP32 firmware: ${event.reason || 'Unstable sensor readings'}`);
-      } else if (event.type === 'CAL_RESULT') {
-        // If ESP32 firmware calculated the calibration result
-        setPendingPoint((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            volumeMl: event.ml,
-            averageRaw: event.average,
-            minimum: event.minimum,
-            maximum: event.maximum,
-            range: event.range,
-          };
-        });
-      } else if (event.type === 'CALIBRATION_SAVED') {
-        setLastSavedMessage('ESP32 NVS confirmed calibration saved.');
-      } else if (event.type === 'CAL_POINT') {
-        // Received during GET_DATA synchronization
+        const errMsg = `CAL_REJECTED by ESP32 firmware: ${event.reason || 'UNSTABLE'}. Sensor readings fluctuated beyond stability threshold. Allow liquid to settle.`;
+        setCalibrationError(errMsg);
+        setCalProcessingStatus(errMsg);
+        addDebugLog('ERROR', errMsg);
+        sessionRef.current = null;
+      }
+
+      // 6. CAL_POINT: synchronization response from GET_DATA
+      else if (event.type === 'CAL_POINT') {
         setPoints((prev) => {
-          const exists = prev.some((p) => p.volumeMl === event.ml && p.averageRaw === event.average);
+          const exists = prev.some((p) => Math.abs(p.volumeMl - event.ml) < 0.001 && p.averageRaw === event.average);
           if (exists) return prev;
           const item: CalibrationPoint = {
             id: Math.random().toString(36).substring(2, 9),
@@ -71,79 +187,84 @@ export function useCalibration() {
             timestamp: Date.now(),
             syncedToESP: true,
           };
-          return sortCalibrationPoints([...prev.filter((p) => p.volumeMl !== event.ml), item]);
+          return sortCalibrationPoints([...prev.filter((p) => Math.abs(p.volumeMl - event.ml) > 0.001), item]);
         });
       }
     });
 
     return unsubscribe;
-  }, [pendingPoint]);
+  }, [addDebugLog]);
 
   /**
-   * Initiate calibration workflow for a given volume:
-   * Captures 20 readings from the live stream, validates stability, and sends CAL,<ml> to ESP32.
+   * Initiate calibration: Sends CAL,<ml> directly to ESP32.
+   * Continuous serial reader is kept running without interruption or duplicate reader locks.
    */
   const startCalibrationCapture = useCallback(
-    async (volumeMl: number, currentReadings: RawReading[], stabilityThreshold: number = 50) => {
+    async (volumeMl: number, _recentReadings?: RawReading[], _threshold?: number) => {
       setCalibrationError(null);
       setLastSavedMessage(null);
 
       if (volumeMl < 0 || isNaN(volumeMl)) {
-        setCalibrationError('Volume must be a non-negative number in ml.');
+        const err = 'Volume must be a non-negative number in ml.';
+        setCalibrationError(err);
+        addDebugLog('ERROR', err);
         return false;
       }
 
-      if (points.length >= MAX_CALIBRATION_POINTS && !points.some(p => p.volumeMl === volumeMl)) {
-        setCalibrationError(`Cannot exceed ESP32 maximum limit of ${MAX_CALIBRATION_POINTS} calibration points.`);
+      if (points.length >= MAX_CALIBRATION_POINTS && !points.some((p) => Math.abs(p.volumeMl - volumeMl) < 0.001)) {
+        const err = `Cannot exceed ESP32 maximum limit of ${MAX_CALIBRATION_POINTS} calibration points.`;
+        setCalibrationError(err);
+        addDebugLog('ERROR', err);
         return false;
       }
 
-      if (currentReadings.length < 20) {
-        setCalibrationError(`Insufficient sensor readings: ${currentReadings.length}/20 captured. Please wait for 20 readings.`);
-        return false;
+      // Clear any prior timeout
+      if (sessionRef.current?.timeoutId) {
+        clearTimeout(sessionRef.current.timeoutId);
       }
 
-      // Compute statistics over latest 20 readings
-      const windowReadings = currentReadings.slice(-20);
-      const rawValues = windowReadings.map((r) => r.raw);
-      const min = Math.min(...rawValues);
-      const max = Math.max(...rawValues);
-      const sum = rawValues.reduce((a, b) => a + b, 0);
-      const avg = Math.round(sum / rawValues.length);
-      const range = max - min;
+      setIsCalibrating(true);
+      const startMsg = `Transmitting CAL,${Math.round(volumeMl)} to ESP32...`;
+      setCalProcessingStatus(startMsg);
+      addDebugLog('TX', `Initiating calibration: CAL,${Math.round(volumeMl)}`);
 
-      if (range > stabilityThreshold) {
-        setCalibrationError(`Readings are UNSTABLE! Range is ${range} (threshold is ${stabilityThreshold}). Stabilize the tank before calibrating.`);
-        return false;
-      }
-
-      const pointToConfirm: CalibrationPoint = {
-        id: Math.random().toString(36).substring(2, 9),
+      // Initialize session ref
+      sessionRef.current = {
         volumeMl,
-        averageRaw: avg,
-        minimum: min,
-        maximum: max,
-        range,
-        status: 'UNSAVED',
-        timestamp: Date.now(),
-        syncedToESP: false,
+        startTime: Date.now(),
       };
 
-      setPendingPoint(pointToConfirm);
-      setIsCalibrating(true);
+      // 6-second response timeout
+      const timeoutId = setTimeout(() => {
+        if (sessionRef.current) {
+          setIsCalibrating(false);
+          const timeoutMsg = `Calibration Timeout: No CAL_RESULT response received from ESP32 for CAL,${Math.round(volumeMl)} after 6 seconds. Verify USB connection.`;
+          setCalibrationError(timeoutMsg);
+          setCalProcessingStatus(timeoutMsg);
+          addDebugLog('TIMEOUT', timeoutMsg);
+          sessionRef.current = null;
+        }
+      }, 6000);
+
+      sessionRef.current.timeoutId = timeoutId;
 
       try {
-        // Send CAL,<ml> command to ESP32
         await serialService.sendCommand(`CAL,${Math.round(volumeMl)}`);
         return true;
       } catch (err: any) {
+        if (sessionRef.current?.timeoutId) {
+          clearTimeout(sessionRef.current.timeoutId);
+        }
+        sessionRef.current = null;
         setIsCalibrating(false);
-        setPendingPoint(null);
-        setCalibrationError(`Failed to send CAL command to ESP32: ${err.message}`);
+        const sendErrMsg = `Failed to send CAL command to ESP32: ${err.message}`;
+        setCalibrationError(sendErrMsg);
+        setCalProcessingStatus(sendErrMsg);
+        addDebugLog('ERROR', sendErrMsg);
         return false;
       }
     },
-    [points]
+    [points, addDebugLog]
   );
 
   /**
@@ -179,13 +300,15 @@ export function useCalibration() {
     points,
     isCalibrating,
     calibrationError,
-    pendingPoint,
     lastSavedMessage,
+    latestCalResult,
+    calProcessingStatus,
+    debugLogs,
     startCalibrationCapture,
     deletePoint,
     updatePoint,
     replaceAllPoints,
+    clearDebugLogs,
     setCalibrationError,
   };
 }
-
