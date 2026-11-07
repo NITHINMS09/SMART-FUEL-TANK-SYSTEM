@@ -120,3 +120,4 @@ export const MotorConfigPage: React.FC<MotorConfigPageProps> = ({
     </div>
   );
 };
+

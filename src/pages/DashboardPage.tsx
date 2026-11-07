@@ -9,6 +9,10 @@ import {
   Lock,
   Unlock,
   Radio,
+  AlertTriangle,
+  RefreshCw,
+  Usb,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   CalibrationPoint,
@@ -30,6 +34,8 @@ import { formatNumber, formatDegrees, formatTimestamp } from '../utils/formatter
 
 interface DashboardPageProps {
   connectionState: ConnectionState;
+  errorMessage: string | null;
+  onRetryConnect: () => Promise<boolean>;
   hx711Status: HX711Status;
   motorStatus: MotorStatus;
   stats: LoadCellStats;
@@ -46,6 +52,8 @@ interface DashboardPageProps {
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   connectionState,
+  errorMessage,
+  onRetryConnect,
   hx711Status,
   motorStatus,
   stats,
@@ -59,8 +67,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onTriggerCapOpen,
   isAutomationRunning,
 }) => {
+  const [isRetrying, setIsRetrying] = React.useState(false);
   const confirmedCalPoints = calibrationPoints.filter((p) => p.status === 'CONFIRMED');
   const isCalibrated = confirmedCalPoints.length >= 2;
+
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    try {
+      await onRetryConnect();
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   const volumeHistory = React.useMemo(() => {
     if (!volumeInterpolation.volumeMl) return [];
@@ -74,17 +92,68 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Prominent Connection Error Banner in Connection Dashboard */}
+      {(connectionState === 'ERROR' || errorMessage) && (
+        <div className="p-4 rounded-xl bg-rose-950/60 border border-rose-500/60 shadow-glow-red space-y-3 font-mono text-xs text-rose-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2 text-rose-300 font-bold uppercase tracking-wider text-sm">
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+              <span>ESP32 USB Serial Connection Error</span>
+            </div>
+            <button
+              onClick={handleRetry}
+              disabled={isRetrying}
+              className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold flex items-center space-x-1.5 transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+              <span>{isRetrying ? 'Retrying...' : 'Retry Connection'}</span>
+            </button>
+          </div>
+
+          <div className="bg-black/40 p-3 rounded-lg border border-rose-900/60 text-rose-200 font-mono text-xs break-all">
+            <span className="text-slate-400 select-none mr-2">Error Detail:</span>
+            <span className="font-semibold text-rose-300">{errorMessage || 'Serial port connection failed.'}</span>
+          </div>
+
+          <div className="text-[11px] text-slate-400 space-y-1">
+            <p className="font-semibold text-slate-300">Troubleshooting Guidance:</p>
+            <ul className="list-disc list-inside space-y-0.5 text-slate-400 pl-1">
+              <li>Ensure the COM port is not open in another application (e.g., Arduino Serial Monitor, PlatformIO, or another browser tab).</li>
+              <li>Unplug and re-plug the USB-C cable to the ESP32-S3 to reset the native USB CDC interface.</li>
+              <li>Ensure you have granted permission in the browser port selector prompt.</li>
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* Top Hardware Diagnostics Ribbon */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* ESP32 Status */}
-        <div className="panel-glass rounded-xl p-4 border-slate-800 flex items-center justify-between">
+        <div
+          className={`panel-glass rounded-xl p-4 border transition-all ${
+            connectionState === 'ERROR'
+              ? 'border-rose-500/50 bg-rose-950/20'
+              : 'border-slate-800'
+          } flex items-center justify-between`}
+        >
           <div>
             <span className="text-[10px] uppercase font-mono text-slate-500 font-semibold block">
               ESP32-S3 Hardware
             </span>
             <span className="text-sm font-mono font-bold text-white mt-1 block">
-              {connectionState === 'CONNECTED' ? 'USB COM Active' : 'Disconnected'}
+              {connectionState === 'CONNECTED'
+                ? 'USB COM Active'
+                : connectionState === 'CONNECTING'
+                ? 'Opening Port...'
+                : connectionState === 'ERROR'
+                ? 'Connection Error'
+                : 'Disconnected'}
             </span>
+            {connectionState === 'ERROR' && (
+              <span className="text-[10px] font-mono text-rose-400 mt-0.5 block truncate max-w-[140px]">
+                Click Retry above
+              </span>
+            )}
           </div>
           <StatusBadge status={connectionState} size="sm" />
         </div>

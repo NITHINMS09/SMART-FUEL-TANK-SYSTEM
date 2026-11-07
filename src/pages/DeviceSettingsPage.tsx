@@ -249,3 +249,4 @@ export const DeviceSettingsPage: React.FC<DeviceSettingsPageProps> = ({
     </div>
   );
 };
+

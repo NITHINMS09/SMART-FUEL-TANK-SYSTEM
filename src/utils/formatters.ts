@@ -38,3 +38,4 @@ export function formatDateTime(timestamp: number | string): string {
     hour12: false,
   });
 }
+

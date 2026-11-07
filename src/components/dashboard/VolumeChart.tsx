@@ -104,3 +104,4 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
     </div>
   );
 };
+

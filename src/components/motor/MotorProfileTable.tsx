@@ -195,3 +195,4 @@ export const MotorProfileTable: React.FC<MotorProfileTableProps> = ({
     </div>
   );
 };
+

@@ -113,3 +113,4 @@ export function formatOpenCommand(degrees: number, direction: MotorDirection): s
 export function formatCloseCommand(degrees: number, direction: MotorDirection): string {
   return `CLOSE,${Math.round(degrees)},${direction}`;
 }
+

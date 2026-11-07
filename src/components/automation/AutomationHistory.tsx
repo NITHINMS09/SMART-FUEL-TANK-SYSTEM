@@ -143,3 +143,4 @@ export const AutomationHistory: React.FC<AutomationHistoryProps> = ({
     </div>
   );
 };
+

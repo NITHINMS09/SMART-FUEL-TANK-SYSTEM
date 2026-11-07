@@ -139,3 +139,4 @@ export const CalibrationCurve: React.FC<CalibrationCurveProps> = ({
     </div>
   );
 };
+

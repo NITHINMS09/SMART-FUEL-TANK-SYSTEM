@@ -207,3 +207,4 @@ export const SerialConsole: React.FC<SerialConsoleProps> = ({
     </div>
   );
 };
+

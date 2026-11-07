@@ -147,3 +147,4 @@ All commands are terminated with newline (`\n`). Handled asynchronously via a no
 - **Lucide React** (Industrial IoT iconography)
 - **Recharts** (Real-time oscilloscope and calibration curve charts)
 - **Web Serial API** (`navigator.serial`)
+

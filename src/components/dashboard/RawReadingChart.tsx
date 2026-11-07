@@ -120,3 +120,4 @@ export const RawReadingChart: React.FC<RawReadingChartProps> = ({
     </div>
   );
 };
+

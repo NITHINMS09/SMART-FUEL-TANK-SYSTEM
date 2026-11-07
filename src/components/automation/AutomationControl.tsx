@@ -278,3 +278,4 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
     </div>
   );
 };
+

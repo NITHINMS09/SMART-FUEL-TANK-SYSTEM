@@ -164,6 +164,8 @@ export function App() {
           {activePage === 'dashboard' && (
             <DashboardPage
               connectionState={connectionState}
+              errorMessage={errorMessage}
+              onRetryConnect={() => connect(settings.baudRate)}
               hx711Status={hx711Status}
               motorStatus={motorStatus}
               stats={stats}

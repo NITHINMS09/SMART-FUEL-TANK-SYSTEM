@@ -128,3 +128,4 @@ export interface ProfileInterpolationResult {
   lowerProfile?: MotorProfile;
   upperProfile?: MotorProfile;
 }
+

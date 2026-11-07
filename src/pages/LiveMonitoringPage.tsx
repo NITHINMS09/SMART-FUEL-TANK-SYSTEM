@@ -239,3 +239,4 @@ export const LiveMonitoringPage: React.FC<LiveMonitoringPageProps> = ({
     </div>
   );
 };
+
