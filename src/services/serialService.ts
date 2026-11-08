@@ -492,11 +492,16 @@ export class SerialService {
           range: isNaN(rng) ? 0 : rng,
         });
       }
-    } else if (cmd === 'CAL_ACCEPTED') {
+    } else if (
+      cmd === 'CAL_ACCEPTED' ||
+      cmd === 'CALIBRATION_ACCEPTED' ||
+      cmd === 'CAL_SAVED' ||
+      cmd === 'CAL_OK'
+    ) {
       logItem.parsedType = 'CAL_ACCEPTED';
       this.notify({ type: 'CAL_ACCEPTED' });
     } else if (cmd === 'CAL_REJECTED') {
-      const reason = parts[1] || 'UNSTABLE';
+      const reason = parts.slice(1).join(',') || 'UNSTABLE';
       logItem.parsedType = 'CAL_REJECTED';
       this.notify({ type: 'CAL_REJECTED', reason });
     } else if (cmd === 'CALIBRATION_SAVED') {

@@ -53,7 +53,7 @@ struct MotorProfile {
 };
 
 // --- GLOBAL STATE ---
-Preferences preferences;
+// Calibration and Motor Profile arrays (RAM caches synced with Preferences NVS)
 
 CalibrationPoint calPoints[MAX_CALIBRATION_POINTS];
 int calPointCount = 0;
@@ -82,9 +82,9 @@ long readHX711Raw();
 bool isHX711Ready();
 bool waitHX711Ready(unsigned long timeoutMs = 150);
 void processCommand(const String& cmd);
-void saveCalibrationToNVS();
+bool saveCalibrationToNVS();
 void loadCalibrationFromNVS();
-void saveProfilesToNVS();
+bool saveProfilesToNVS();
 void loadProfilesFromNVS();
 void stepMotor(int degrees, bool isCW, int speedDelayMicros = 500);
 float calculateEstimatedVolume(long raw);
@@ -110,12 +110,12 @@ void setup() {
   digitalWrite(PIN_DRV_EN, HIGH); // Driver initially disabled (active LOW)
 
   // Load permanent configurations from NVS
-  preferences.begin("smart_tank", false);
   loadCalibrationFromNVS();
   loadProfilesFromNVS();
 
   delay(200);
   Serial.println("SYSTEM_READY");
+  Serial.flush();
 }
 
 // ============================================================================
@@ -349,9 +349,11 @@ void processCommand(const String& cmd) {
     Serial.print(maxVal);
     Serial.print(",");
     Serial.println(rangeVal);
+    Serial.flush();
 
     if (rangeVal > maxAllowedRange) {
       Serial.println("CAL_REJECTED,UNSTABLE");
+      Serial.flush();
       return;
     }
 
@@ -381,11 +383,18 @@ void processCommand(const String& cmd) {
       calPoints[MAX_CALIBRATION_POINTS - 1].rangeRaw = rangeVal;
     }
 
-    saveCalibrationToNVS();
-    Serial.println("CAL_ACCEPTED");
-    Serial.println("CALIBRATION_SAVED");
-    Serial.print("CALIBRATION_COUNT,");
-    Serial.println(calPointCount);
+    bool nvsSaved = saveCalibrationToNVS();
+    if (nvsSaved) {
+      Serial.println("CAL_ACCEPTED");
+      Serial.println("CALIBRATION_SAVED");
+      Serial.print("CALIBRATION_COUNT,");
+      Serial.println(calPointCount);
+      Serial.flush();
+    } else {
+      Serial.println("ERROR,Failed to commit calibration point to ESP32 flash memory");
+      Serial.println("CAL_REJECTED,NVS_SAVE_FAILED");
+      Serial.flush();
+    }
     return;
   }
 
@@ -517,8 +526,10 @@ void processCommand(const String& cmd) {
       }
       Serial.print("CALIBRATION_COUNT,");
       Serial.println(calPointCount);
+      Serial.flush();
     } else {
       Serial.println("ERROR,Calibration point not found");
+      Serial.flush();
     }
     return;
   }
@@ -528,6 +539,7 @@ void processCommand(const String& cmd) {
     saveCalibrationToNVS();
     Serial.println("CAL_CLEARED");
     Serial.println("CALIBRATION_COUNT,0");
+    Serial.flush();
     return;
   }
 
@@ -575,40 +587,90 @@ void processCommand(const String& cmd) {
 // ============================================================================
 // NVS STORAGE HELPERS
 // ============================================================================
-void saveCalibrationToNVS() {
-  preferences.putInt("cal_count", calPointCount);
-  for (int i = 0; i < calPointCount; i++) {
-    String key = "cp_" + String(i);
-    preferences.putBytes(key.c_str(), &calPoints[i], sizeof(CalibrationPoint));
+bool saveCalibrationToNVS() {
+  if (calPointCount < 0) calPointCount = 0;
+  if (calPointCount > MAX_CALIBRATION_POINTS) calPointCount = MAX_CALIBRATION_POINTS;
+
+  Preferences prefs;
+  if (!prefs.begin("smart_tank", false)) {
+    Serial.println("ERROR,Failed to open NVS namespace 'smart_tank'");
+    return false;
   }
+
+  size_t wCount = prefs.putInt("cal_count", calPointCount);
+  bool allOk = (wCount > 0 || calPointCount == 0);
+
+  for (int i = 0; i < calPointCount; i++) {
+    char key[16];
+    snprintf(key, sizeof(key), "cp_%d", i);
+    size_t written = prefs.putBytes(key, &calPoints[i], sizeof(CalibrationPoint));
+    if (written != sizeof(CalibrationPoint)) {
+      allOk = false;
+    }
+  }
+  prefs.end();
+  return allOk;
 }
 
 void loadCalibrationFromNVS() {
-  calPointCount = preferences.getInt("cal_count", 0);
+  Preferences prefs;
+  if (!prefs.begin("smart_tank", true)) {
+    calPointCount = 0;
+    return;
+  }
+  calPointCount = prefs.getInt("cal_count", 0);
+  if (calPointCount < 0) calPointCount = 0;
   if (calPointCount > MAX_CALIBRATION_POINTS) calPointCount = MAX_CALIBRATION_POINTS;
 
   for (int i = 0; i < calPointCount; i++) {
-    String key = "cp_" + String(i);
-    preferences.getBytes(key.c_str(), &calPoints[i], sizeof(CalibrationPoint));
+    char key[16];
+    snprintf(key, sizeof(key), "cp_%d", i);
+    prefs.getBytes(key, &calPoints[i], sizeof(CalibrationPoint));
   }
+  prefs.end();
 }
 
-void saveProfilesToNVS() {
-  preferences.putInt("mp_count", motorProfileCount);
-  for (int i = 0; i < motorProfileCount; i++) {
-    String key = "mp_" + String(i);
-    preferences.putBytes(key.c_str(), &motorProfiles[i], sizeof(MotorProfile));
+bool saveProfilesToNVS() {
+  if (motorProfileCount < 0) motorProfileCount = 0;
+  if (motorProfileCount > MAX_MOTOR_PROFILES) motorProfileCount = MAX_MOTOR_PROFILES;
+
+  Preferences prefs;
+  if (!prefs.begin("smart_tank", false)) {
+    Serial.println("ERROR,Failed to open NVS namespace for motor profiles");
+    return false;
   }
+
+  size_t wCount = prefs.putInt("mp_count", motorProfileCount);
+  bool allOk = (wCount > 0 || motorProfileCount == 0);
+
+  for (int i = 0; i < motorProfileCount; i++) {
+    char key[16];
+    snprintf(key, sizeof(key), "mp_%d", i);
+    size_t written = prefs.putBytes(key, &motorProfiles[i], sizeof(MotorProfile));
+    if (written != sizeof(MotorProfile)) {
+      allOk = false;
+    }
+  }
+  prefs.end();
+  return allOk;
 }
 
 void loadProfilesFromNVS() {
-  motorProfileCount = preferences.getInt("mp_count", 0);
+  Preferences prefs;
+  if (!prefs.begin("smart_tank", true)) {
+    motorProfileCount = 0;
+    return;
+  }
+  motorProfileCount = prefs.getInt("mp_count", 0);
+  if (motorProfileCount < 0) motorProfileCount = 0;
   if (motorProfileCount > MAX_MOTOR_PROFILES) motorProfileCount = MAX_MOTOR_PROFILES;
 
   for (int i = 0; i < motorProfileCount; i++) {
-    String key = "mp_" + String(i);
-    preferences.getBytes(key.c_str(), &motorProfiles[i], sizeof(MotorProfile));
+    char key[16];
+    snprintf(key, sizeof(key), "mp_%d", i);
+    prefs.getBytes(key, &motorProfiles[i], sizeof(MotorProfile));
   }
+  prefs.end();
 }
 
 // ============================================================================

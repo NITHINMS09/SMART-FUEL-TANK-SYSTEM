@@ -21,6 +21,8 @@ export function useCalibration() {
     latestResult?: CalResultData;
     timeoutId?: any;
     startTime: number;
+    accepted?: boolean;
+    saved?: boolean;
   } | null>(null);
 
   // Persistent reference to latest parsed calibration result
@@ -81,6 +83,52 @@ export function useCalibration() {
         }
       }
 
+      // Helper to finalize calibration point storage and unlock session
+      const finalizeCalibrationPoint = (res: CalResultData, fallbackVol?: number) => {
+        const vol =
+          typeof res.volumeMl === 'number' && !isNaN(res.volumeMl)
+            ? res.volumeMl
+            : typeof fallbackVol === 'number' && !isNaN(fallbackVol)
+            ? fallbackVol
+            : 0;
+
+        const avg = res.averageRaw;
+        const min = res.minimum;
+        const max = res.maximum;
+        const range = res.range;
+
+        const confirmedPoint: CalibrationPoint = {
+          id: Math.random().toString(36).substring(2, 9),
+          volumeMl: vol,
+          averageRaw: avg,
+          minimum: min,
+          maximum: max,
+          range,
+          status: 'CONFIRMED',
+          timestamp: Date.now(),
+          syncedToESP: true,
+        };
+
+        // Update points in state immediately
+        setPoints((prev) => {
+          const filtered = prev.filter((p) => Math.abs(p.volumeMl - vol) > 0.001);
+          return sortCalibrationPoints([...filtered, confirmedPoint]);
+        });
+
+        if (sessionRef.current?.timeoutId) {
+          clearTimeout(sessionRef.current.timeoutId);
+          sessionRef.current.timeoutId = undefined;
+        }
+        sessionRef.current = null;
+        setIsCalibrating(false);
+        setCalibrationError(null);
+
+        const acceptedMsg = `CAL_ACCEPTED: Reference point for ${vol} ml accepted and confirmed saved to ESP32 NVS!`;
+        setLastSavedMessage(acceptedMsg);
+        setCalProcessingStatus(acceptedMsg);
+        addDebugLog('STATUS', acceptedMsg, confirmedPoint);
+      };
+
       // 1. CAL_RESULT: parsed statistics from ESP32
       if (event.type === 'CAL_RESULT') {
         const resData: CalResultData = {
@@ -104,18 +152,24 @@ export function useCalibration() {
         if (sessionRef.current) {
           sessionRef.current.latestResult = resData;
 
-          // Clear initial command timeout and start a 4-second confirmation timeout for CAL_ACCEPTED / CAL_REJECTED
+          // If confirmation was already received before or with CAL_RESULT:
+          if (sessionRef.current.accepted || sessionRef.current.saved) {
+            finalizeCalibrationPoint(resData, sessionRef.current.volumeMl);
+            return;
+          }
+
+          // Clear initial command timeout and start a 6-second confirmation timeout for CAL_ACCEPTED / CAL_REJECTED
           if (sessionRef.current.timeoutId) {
             clearTimeout(sessionRef.current.timeoutId);
           }
           sessionRef.current.timeoutId = setTimeout(() => {
             setIsCalibrating(false);
-            const errMsg = 'Timeout waiting for ESP32 confirmation (CAL_ACCEPTED / CAL_REJECTED) after CAL_RESULT.';
+            const errMsg = `Timeout waiting for ESP32 confirmation (CAL_ACCEPTED / CAL_REJECTED) after CAL_RESULT for ${sessionRef.current?.volumeMl ?? event.ml} ml.`;
             setCalibrationError(errMsg);
             setCalProcessingStatus(errMsg);
             addDebugLog('TIMEOUT', errMsg);
             sessionRef.current = null;
-          }, 4000);
+          }, 6000);
         } else {
           sessionRef.current = {
             volumeMl: event.ml,
@@ -127,61 +181,39 @@ export function useCalibration() {
 
       // 2. CAL_ACCEPTED: firmware confirmed reading stability and saved calibration point to NVS
       else if (event.type === 'CAL_ACCEPTED') {
-        if (sessionRef.current?.timeoutId) {
-          clearTimeout(sessionRef.current.timeoutId);
-          sessionRef.current.timeoutId = undefined;
+        if (sessionRef.current) {
+          sessionRef.current.accepted = true;
+          if (sessionRef.current.latestResult) {
+            finalizeCalibrationPoint(sessionRef.current.latestResult, sessionRef.current.volumeMl);
+          } else {
+            const waitMsg = 'CAL_ACCEPTED received from ESP32. Finalizing with incoming CAL_RESULT...';
+            setCalProcessingStatus(waitMsg);
+            addDebugLog('STATUS', waitMsg);
+          }
+        } else if (latestCalResultRef.current) {
+          // If no active session ref (e.g. unsolicited or delayed arrival)
+          finalizeCalibrationPoint(latestCalResultRef.current);
         }
-
-        // Retrieve latest result from synchronous ref or persistent ref
-        const activeResult = sessionRef.current?.latestResult || latestCalResultRef.current;
-        
-        // Strict volume extraction supporting 0 ml
-        let vol = 0;
-        if (activeResult && typeof activeResult.volumeMl === 'number' && !isNaN(activeResult.volumeMl)) {
-          vol = activeResult.volumeMl;
-        } else if (sessionRef.current && typeof sessionRef.current.volumeMl === 'number' && !isNaN(sessionRef.current.volumeMl)) {
-          vol = sessionRef.current.volumeMl;
-        }
-
-        const avg = activeResult ? activeResult.averageRaw : (latestCalResultRef.current?.averageRaw ?? 0);
-        const min = activeResult ? activeResult.minimum : (latestCalResultRef.current?.minimum ?? avg);
-        const max = activeResult ? activeResult.maximum : (latestCalResultRef.current?.maximum ?? avg);
-        const range = activeResult ? activeResult.range : (latestCalResultRef.current?.range ?? Math.max(0, max - min));
-
-        const confirmedPoint: CalibrationPoint = {
-          id: Math.random().toString(36).substring(2, 9),
-          volumeMl: vol,
-          averageRaw: avg,
-          minimum: min,
-          maximum: max,
-          range,
-          status: 'CONFIRMED',
-          timestamp: Date.now(),
-          syncedToESP: true,
-        };
-
-        // Update points in state immediately
-        setPoints((prev) => {
-          const filtered = prev.filter((p) => Math.abs(p.volumeMl - vol) > 0.001);
-          return sortCalibrationPoints([...filtered, confirmedPoint]);
-        });
-
-        // Reset calibrating state & release session ref
-        sessionRef.current = null;
-        setIsCalibrating(false);
-        setCalibrationError(null);
-        const acceptedMsg = `CAL_ACCEPTED: Reference point for ${vol} ml accepted and saved by ESP32 firmware!`;
-        setLastSavedMessage(acceptedMsg);
-        setCalProcessingStatus(acceptedMsg);
-        addDebugLog('STATUS', acceptedMsg);
       }
 
       // 3. CALIBRATION_SAVED: firmware confirmed permanent save to ESP32 Preferences/NVS
       else if (event.type === 'CALIBRATION_SAVED') {
-        const savedMsg = 'CALIBRATION_SAVED: Permanent flash NVS write confirmed by ESP32.';
-        setLastSavedMessage(savedMsg);
-        setCalProcessingStatus(savedMsg);
-        addDebugLog('STATUS', savedMsg);
+        if (sessionRef.current) {
+          sessionRef.current.saved = true;
+          if (sessionRef.current.latestResult) {
+            finalizeCalibrationPoint(sessionRef.current.latestResult, sessionRef.current.volumeMl);
+          } else {
+            const savedMsg = 'CALIBRATION_SAVED: Permanent flash NVS write confirmed by ESP32.';
+            setLastSavedMessage(savedMsg);
+            setCalProcessingStatus(savedMsg);
+            addDebugLog('STATUS', savedMsg);
+          }
+        } else {
+          const savedMsg = 'CALIBRATION_SAVED: Permanent flash NVS write confirmed by ESP32.';
+          setLastSavedMessage(savedMsg);
+          setCalProcessingStatus(savedMsg);
+          addDebugLog('STATUS', savedMsg);
+        }
       }
 
       // 4. CALIBRATION_COUNT: number of points stored in ESP32 NVS
@@ -191,7 +223,7 @@ export function useCalibration() {
         addDebugLog('STATUS', countMsg);
       }
 
-      // 5. CAL_REJECTED: firmware rejected calibration due to instability
+      // 5. CAL_REJECTED: firmware rejected calibration due to instability or flash failure
       else if (event.type === 'CAL_REJECTED') {
         if (sessionRef.current?.timeoutId) {
           clearTimeout(sessionRef.current.timeoutId);
@@ -199,7 +231,7 @@ export function useCalibration() {
         }
         sessionRef.current = null;
         setIsCalibrating(false);
-        const errMsg = `CAL_REJECTED by ESP32 firmware: ${event.reason || 'UNSTABLE'}. Sensor readings fluctuated beyond stability threshold. Allow liquid to settle.`;
+        const errMsg = `CAL_REJECTED by ESP32 firmware: ${event.reason || 'UNSTABLE'}. Sensor readings fluctuated beyond stability threshold or NVS save failed.`;
         setCalibrationError(errMsg);
         setCalProcessingStatus(errMsg);
         addDebugLog('ERROR', errMsg);
@@ -299,6 +331,8 @@ export function useCalibration() {
       sessionRef.current = {
         volumeMl,
         startTime: Date.now(),
+        accepted: false,
+        saved: false,
       };
 
       // 8-second response timeout (ESP32 samples 20 readings in ~2s)
