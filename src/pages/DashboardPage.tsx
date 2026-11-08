@@ -30,7 +30,7 @@ import { LiveCard } from '../components/common/LiveCard';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { RawReadingChart } from '../components/dashboard/RawReadingChart';
 import { VolumeChart } from '../components/dashboard/VolumeChart';
-import { formatNumber, formatDegrees, formatTimestamp } from '../utils/formatters';
+import { formatNumber, formatDegrees, formatTimestamp, formatDateTime } from '../utils/formatters';
 
 interface DashboardPageProps {
   connectionState: ConnectionState;
@@ -40,6 +40,7 @@ interface DashboardPageProps {
   motorStatus: MotorStatus;
   stats: LoadCellStats;
   volumeInterpolation: InterpolationResult;
+  volumeHistory?: { timestamp: number; volumeMl: number }[];
   calibrationPoints: CalibrationPoint[];
   motorProfiles: MotorProfile[];
   lastOperation: LastMotorOperation | null;
@@ -58,6 +59,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   motorStatus,
   stats,
   volumeInterpolation,
+  volumeHistory = [],
   calibrationPoints,
   motorProfiles,
   lastOperation,
@@ -80,15 +82,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   };
 
-  const volumeHistory = React.useMemo(() => {
-    if (!volumeInterpolation.volumeMl) return [];
-    return [
-      {
-        timestamp: Date.now(),
-        volumeMl: volumeInterpolation.volumeMl,
-      },
-    ];
-  }, [volumeInterpolation.volumeMl]);
+  // Find timestamp of the most recent confirmed calibration point
+  const lastCalibrationTime = React.useMemo(() => {
+    if (confirmedCalPoints.length === 0) return null;
+    const timestamps = confirmedCalPoints
+      .map((p) => p.timestamp)
+      .filter((t) => typeof t === 'number' && t > 0);
+    if (timestamps.length === 0) return null;
+    return Math.max(...timestamps);
+  }, [confirmedCalPoints]);
 
   return (
     <div className="space-y-6">
@@ -202,12 +204,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       {/* Main Metric Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Estimated Volume */}
+        {/* 1. Current Liquid Volume */}
         <LiveCard
-          title="Current Estimated Volume"
+          title="Current Liquid Volume"
           value={
             volumeInterpolation.volumeMl !== null
-              ? formatNumber(volumeInterpolation.volumeMl, 1)
+              ? `${formatNumber(volumeInterpolation.volumeMl, 1)}`
               : '—'
           }
           unit={volumeInterpolation.volumeMl !== null ? 'ml' : ''}
@@ -222,64 +224,75 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           }
         />
 
-        {/* Current Raw Reading */}
+        {/* 2. Current Raw HX711 Reading */}
         <LiveCard
           title="Current Raw HX711"
           value={formatNumber(stats.currentRaw)}
-          subtext={`Stability: ${stats.stability}`}
+          subtext="Unfiltered live ADC stream"
           icon={Radio}
           variant="cyan"
           badge={<StatusBadge status={stats.stability} size="sm" />}
         />
 
-        {/* Average Raw Reading */}
+        {/* 3. Filtered Raw Reading */}
         <LiveCard
-          title="Average Raw (20 Samples)"
-          value={formatNumber(stats.average)}
-          subtext={`Min: ${formatNumber(stats.minimum)} | Max: ${formatNumber(stats.maximum)}`}
+          title="Filtered Raw Reading"
+          value={formatNumber(stats.filteredRaw !== null ? stats.filteredRaw : stats.average)}
+          subtext="Noise-filtered (EMA + 20-Sample Window)"
           icon={Activity}
           variant="blue"
         />
 
-        {/* Raw Reading Range */}
+        {/* 4. Reading Stability */}
         <LiveCard
-          title="Raw Spread (Range)"
-          value={formatNumber(stats.range)}
-          unit="units"
+          title="Reading Stability"
+          value={stats.stability}
           subtext={
-            stats.range !== null && stats.range <= 50
-              ? 'Stable: Range ≤ 50 units'
-              : 'Fluctuating: Range > 50 units'
+            stats.range !== null
+              ? `Spread: ${formatNumber(stats.range)} units (Threshold: ≤ 50)`
+              : 'Awaiting sensor readings...'
           }
           icon={Scale}
-          variant={stats.range !== null && stats.range <= 50 ? 'green' : 'amber'}
+          variant={stats.stability === 'STABLE' ? 'green' : stats.stability === 'UNSTABLE' ? 'amber' : 'default'}
         />
       </div>
 
       {/* Secondary Metrics: Calibration Points, Motor Profiles, Last Operation */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 5. Calibration Status */}
         <LiveCard
-          title="Calibration Points"
-          value={confirmedCalPoints.length}
-          unit="/ 30"
+          title="Calibration Status"
+          value={isCalibrated ? 'CALIBRATED' : 'UNCALIBRATED'}
+          unit={isCalibrated ? `(${confirmedCalPoints.length} pts)` : ''}
           subtext={
             isCalibrated
-              ? `${confirmedCalPoints.length} points confirmed in ESP32 NVS`
+              ? `${confirmedCalPoints.length} points active in ESP32 NVS`
               : 'Requires at least 2 points to interpolate volume'
           }
+          icon={Scale}
+          variant={isCalibrated ? 'green' : 'amber'}
+        />
+
+        {/* 6. Last Calibration Time */}
+        <LiveCard
+          title="Last Calibration Time"
+          value={lastCalibrationTime ? formatDateTime(lastCalibrationTime) : 'None'}
+          subtext={lastCalibrationTime ? 'Latest confirmed NVS point' : 'Calibrate in Load Cell Calibration'}
           icon={Scale}
           variant="cyan"
         />
 
+        {/* 7. Motor Profiles */}
         <LiveCard
           title="Motor Profiles"
           value={motorProfiles.length}
           unit="profiles"
-          subtext="Volume-specific dual open/close rotational profiles"
+          subtext="Volume-specific dual rotational profiles"
           icon={Sliders}
           variant="blue"
         />
 
+        {/* 8. Last Motor Operation */}
         <LiveCard
           title="Last Motor Operation"
           value={
@@ -327,7 +340,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
             <div>
               <h3 className="text-sm font-mono font-bold uppercase text-white tracking-wider">
-                Interpolated Water Volume Trend
+                Interpolated Liquid Volume Trend
               </h3>
               <p className="text-xs text-slate-400 font-mono">
                 Real-time calculated liquid volume based on confirmed calibration curve

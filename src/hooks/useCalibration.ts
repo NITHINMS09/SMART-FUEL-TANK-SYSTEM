@@ -23,6 +23,9 @@ export function useCalibration() {
     startTime: number;
   } | null>(null);
 
+  // Persistent reference to latest parsed calibration result
+  const latestCalResultRef = useRef<CalResultData | null>(null);
+
   // Sync points state to persistent browser storage
   useEffect(() => {
     StorageService.saveCalibrationPoints(points);
@@ -90,6 +93,7 @@ export function useCalibration() {
         };
 
         // Update UI immediately (Requirement 7)
+        latestCalResultRef.current = resData;
         setLatestCalResult(resData);
         setCalibrationError(null);
         const statusMsg = `CAL_RESULT received: Volume=${event.ml} ml, Average=${event.average}, Min=${event.minimum}, Max=${event.maximum}, Range=${event.range}`;
@@ -128,15 +132,21 @@ export function useCalibration() {
           sessionRef.current.timeoutId = undefined;
         }
 
-        // Retrieve latest result from synchronous ref
-        const activeResult = sessionRef.current?.latestResult;
-        const targetVol = sessionRef.current?.volumeMl ?? activeResult?.volumeMl ?? 0;
+        // Retrieve latest result from synchronous ref or persistent ref
+        const activeResult = sessionRef.current?.latestResult || latestCalResultRef.current;
+        
+        // Strict volume extraction supporting 0 ml
+        let vol = 0;
+        if (activeResult && typeof activeResult.volumeMl === 'number' && !isNaN(activeResult.volumeMl)) {
+          vol = activeResult.volumeMl;
+        } else if (sessionRef.current && typeof sessionRef.current.volumeMl === 'number' && !isNaN(sessionRef.current.volumeMl)) {
+          vol = sessionRef.current.volumeMl;
+        }
 
-        const avg = activeResult ? activeResult.averageRaw : 0;
-        const min = activeResult ? activeResult.minimum : avg;
-        const max = activeResult ? activeResult.maximum : avg;
-        const range = activeResult ? activeResult.range : max - min;
-        const vol = activeResult ? activeResult.volumeMl : targetVol;
+        const avg = activeResult ? activeResult.averageRaw : (latestCalResultRef.current?.averageRaw ?? 0);
+        const min = activeResult ? activeResult.minimum : (latestCalResultRef.current?.minimum ?? avg);
+        const max = activeResult ? activeResult.maximum : (latestCalResultRef.current?.maximum ?? avg);
+        const range = activeResult ? activeResult.range : (latestCalResultRef.current?.range ?? Math.max(0, max - min));
 
         const confirmedPoint: CalibrationPoint = {
           id: Math.random().toString(36).substring(2, 9),
@@ -263,8 +273,8 @@ export function useCalibration() {
         return false;
       }
 
-      if (volumeMl < 0 || isNaN(volumeMl)) {
-        const err = 'Volume must be a non-negative number in ml.';
+      if (typeof volumeMl !== 'number' || isNaN(volumeMl) || volumeMl < 0) {
+        const err = 'Volume must be a non-negative number in ml (0 or greater).';
         setCalibrationError(err);
         addDebugLog('ERROR', err);
         return false;
@@ -324,11 +334,20 @@ export function useCalibration() {
   );
 
   /**
-   * Delete a calibration point
+   * Delete a calibration point (syncs with ESP32 NVS if connected)
    */
   const deletePoint = useCallback(async (id: string) => {
+    const pt = points.find((p) => p.id === id);
+    if (pt && serialService.getState() === 'CONNECTED') {
+      try {
+        const volStr = Number.isInteger(pt.volumeMl) ? pt.volumeMl.toString() : pt.volumeMl.toFixed(1);
+        await serialService.sendCommand(`DEL_CAL,${volStr}`);
+      } catch (e) {
+        console.warn('Failed to delete calibration point on ESP32:', e);
+      }
+    }
     setPoints((prev) => prev.filter((p) => p.id !== id));
-  }, []);
+  }, [points]);
 
   /**
    * Edit an existing calibration point (volume ml)

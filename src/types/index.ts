@@ -21,6 +21,7 @@ export interface RawReading {
 
 export interface LoadCellStats {
   currentRaw: number | null;
+  filteredRaw: number | null;
   average: number | null;
   minimum: number | null;
   maximum: number | null;

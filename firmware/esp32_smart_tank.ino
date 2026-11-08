@@ -259,11 +259,17 @@ void processCommand(const String& cmd) {
     float ml = 0;
     long maxAllowedRange = STABILITY_THRESHOLD;
     if (commaIdx != -1) {
-      ml = cmd.substring(4, commaIdx).toFloat();
-      maxAllowedRange = cmd.substring(commaIdx + 1).toInt();
+      String mlStr = cmd.substring(4, commaIdx);
+      mlStr.trim();
+      ml = mlStr.toFloat();
+      String thStr = cmd.substring(commaIdx + 1);
+      thStr.trim();
+      maxAllowedRange = thStr.toInt();
       if (maxAllowedRange <= 0) maxAllowedRange = STABILITY_THRESHOLD;
     } else {
-      ml = cmd.substring(4).toFloat();
+      String mlStr = cmd.substring(4);
+      mlStr.trim();
+      ml = mlStr.toFloat();
     }
 
     // Actively sample 20 readings with strict per-sample and total timeout handling
@@ -488,11 +494,52 @@ void processCommand(const String& cmd) {
     return;
   }
 
+  if (cmd.startsWith("DEL_CAL,")) {
+    float ml = cmd.substring(8).toFloat();
+    int foundIdx = -1;
+    for (int i = 0; i < calPointCount; i++) {
+      if (abs(calPoints[i].volumeMl - ml) < 0.1) {
+        foundIdx = i;
+        break;
+      }
+    }
+    if (foundIdx != -1) {
+      for (int i = foundIdx; i < calPointCount - 1; i++) {
+        calPoints[i] = calPoints[i + 1];
+      }
+      calPointCount--;
+      saveCalibrationToNVS();
+      Serial.print("CAL_DELETED,");
+      if (ml == (long)ml) {
+        Serial.println((long)ml);
+      } else {
+        Serial.println(ml, 1);
+      }
+      Serial.print("CALIBRATION_COUNT,");
+      Serial.println(calPointCount);
+    } else {
+      Serial.println("ERROR,Calibration point not found");
+    }
+    return;
+  }
+
+  if (cmd == "CLEAR_CAL") {
+    calPointCount = 0;
+    saveCalibrationToNVS();
+    Serial.println("CAL_CLEARED");
+    Serial.println("CALIBRATION_COUNT,0");
+    return;
+  }
+
   if (cmd == "GET_DATA") {
     // Report calibration points
     for (int i = 0; i < calPointCount; i++) {
       Serial.print("CAL_POINT,");
-      Serial.print(calPoints[i].volumeMl);
+      if (calPoints[i].volumeMl == (long)calPoints[i].volumeMl) {
+        Serial.print((long)calPoints[i].volumeMl);
+      } else {
+        Serial.print(calPoints[i].volumeMl, 1);
+      }
       Serial.print(",");
       Serial.print(calPoints[i].averageRaw);
       Serial.print(",");
@@ -505,7 +552,11 @@ void processCommand(const String& cmd) {
     // Report motor profiles
     for (int i = 0; i < motorProfileCount; i++) {
       Serial.print("PROFILE_POINT,");
-      Serial.print(motorProfiles[i].volumeMl);
+      if (motorProfiles[i].volumeMl == (long)motorProfiles[i].volumeMl) {
+        Serial.print((long)motorProfiles[i].volumeMl);
+      } else {
+        Serial.print(motorProfiles[i].volumeMl, 1);
+      }
       Serial.print(",");
       Serial.print(motorProfiles[i].openDegrees);
       Serial.print(",");
@@ -566,7 +617,23 @@ void loadProfilesFromNVS() {
 float calculateEstimatedVolume(long raw) {
   if (calPointCount < 2) return 0.0;
 
-  // Simple linear segment search
+  // Find lowest volume index (empty baseline) and highest volume index
+  int emptyIdx = 0;
+  int fullIdx = 0;
+  for (int i = 1; i < calPointCount; i++) {
+    if (calPoints[i].volumeMl < calPoints[emptyIdx].volumeMl) emptyIdx = i;
+    if (calPoints[i].volumeMl > calPoints[fullIdx].volumeMl) fullIdx = i;
+  }
+
+  bool isDirect = calPoints[fullIdx].averageRaw >= calPoints[emptyIdx].averageRaw;
+
+  // Clamping for empty tank baseline (0 ml)
+  if (calPoints[emptyIdx].volumeMl == 0) {
+    if (isDirect && raw <= calPoints[emptyIdx].averageRaw) return 0.0;
+    if (!isDirect && raw >= calPoints[emptyIdx].averageRaw) return 0.0;
+  }
+
+  // Linear interpolation across segments
   for (int i = 0; i < calPointCount - 1; i++) {
     long r1 = calPoints[i].averageRaw;
     long r2 = calPoints[i + 1].averageRaw;
@@ -576,12 +643,14 @@ float calculateEstimatedVolume(long raw) {
     if ((r1 <= raw && raw <= r2) || (r2 <= raw && raw <= r1)) {
       if (r1 == r2) return v1;
       float ratio = (float)(raw - r1) / (float)(r2 - r1);
-      return v1 + ratio * (v2 - v1);
+      float vol = v1 + ratio * (v2 - v1);
+      return vol < 0 ? 0.0 : vol;
     }
   }
 
   // Clamped to bounds
-  return calPoints[0].volumeMl;
+  return isDirect ? (raw < calPoints[emptyIdx].averageRaw ? calPoints[emptyIdx].volumeMl : calPoints[fullIdx].volumeMl)
+                  : (raw > calPoints[emptyIdx].averageRaw ? calPoints[emptyIdx].volumeMl : calPoints[fullIdx].volumeMl);
 }
 
 int findProfileCloseAngle(float volumeMl, int& outDirection) {

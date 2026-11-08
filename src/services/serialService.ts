@@ -10,6 +10,8 @@ export type SerialEvent =
   | { type: 'CAL_REJECTED'; reason: string }
   | { type: 'CALIBRATION_SAVED' }
   | { type: 'CALIBRATION_COUNT'; count: number }
+  | { type: 'CAL_DELETED'; ml: number }
+  | { type: 'CAL_CLEARED' }
   | { type: 'PROFILE_SAVED' }
   | { type: 'CURRENT_VOLUME'; ml: number }
   | { type: 'AUTO_VOLUME'; ml: number }
@@ -504,6 +506,13 @@ export class SerialService {
       const count = parseInt(parts[1], 10) || 0;
       logItem.parsedType = 'CALIBRATION_COUNT';
       this.notify({ type: 'CALIBRATION_COUNT', count });
+    } else if (cmd === 'CAL_DELETED') {
+      const ml = parseFloat(parts[1]);
+      logItem.parsedType = 'CAL_DELETED';
+      this.notify({ type: 'CAL_DELETED', ml });
+    } else if (cmd === 'CAL_CLEARED') {
+      logItem.parsedType = 'CAL_CLEARED';
+      this.notify({ type: 'CAL_CLEARED' });
     } else if (cmd === 'PROFILE_SAVED') {
       logItem.parsedType = 'PROFILE_SAVED';
       this.notify({ type: 'PROFILE_SAVED' });

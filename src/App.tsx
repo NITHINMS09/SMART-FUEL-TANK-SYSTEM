@@ -78,6 +78,7 @@ export function App() {
     readings,
     stats,
     volumeInterpolation,
+    volumeHistory,
     stabilityThreshold,
     setStabilityThreshold,
     clearReadings,
@@ -175,6 +176,7 @@ export function App() {
               motorStatus={motorStatus}
               stats={stats}
               volumeInterpolation={volumeInterpolation}
+              volumeHistory={volumeHistory}
               calibrationPoints={points}
               motorProfiles={profiles}
               lastOperation={lastOperation}
