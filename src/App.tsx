@@ -1,16 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSerial } from './hooks/useSerial';
 import { useCalibration } from './hooks/useCalibration';
 import { useMotorProfiles } from './hooks/useMotorProfiles';
 import { useLoadCell } from './hooks/useLoadCell';
 import { useAutomation } from './hooks/useAutomation';
+import { useSync } from './hooks/useSync';
 import { StorageService } from './services/storageService';
-import { DeviceSettings, MotorDirection } from './types';
+import {
+  DeviceSettings,
+  MotorDirection,
+  RemoteControlAction,
+  CapState,
+  TelemetrySnapshot,
+  LoadCellStats,
+  InterpolationResult,
+  LastMotorOperation,
+  RawReading,
+  ConnectionState,
+  MotorStatus,
+} from './types';
 
 // Common Components
 import { Header } from './components/common/Header';
 import { Sidebar, PageId } from './components/common/Sidebar';
 import { SerialConsole } from './components/common/SerialConsole';
+import { RemoteAuthModal } from './components/common/RemoteAuthModal';
 
 // Pages
 import { DriverDashboardPage } from './pages/DriverDashboardPage';
@@ -28,9 +42,10 @@ export function App() {
   const [activePage, setActivePage] = useState<PageId>('dashboard');
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [settings, setSettings] = useState<DeviceSettings>(() => StorageService.loadSettings());
 
-  // Hardware Serial Hook
+  // Hardware Serial Hook (authoritative physical connection on Laptop A)
   const {
     connectionState,
     errorMessage,
@@ -110,6 +125,270 @@ export function App() {
     testRotation
   );
 
+  // Buffer for remote client live charts
+  const [remoteReadings, setRemoteReadings] = useState<RawReading[]>([]);
+  const [remoteVolumeHistory, setRemoteVolumeHistory] = useState<{ timestamp: number; volumeMl: number }[]>([]);
+
+  // Telemetry Snapshot Provider for Gateway Broadcasting
+  const getLocalSnapshot = useCallback((): TelemetrySnapshot => {
+    const confirmedPoints = points.filter((p) => p.status === 'CONFIRMED');
+    const maxVol =
+      confirmedPoints.length > 0
+        ? Math.max(...confirmedPoints.map((p) => p.volumeMl), 1000)
+        : 1000;
+    const currentVol = volumeInterpolation.volumeMl;
+    const pct =
+      currentVol !== null && maxVol > 0
+        ? Math.min(100, Math.max(0, (currentVol / maxVol) * 100))
+        : 0;
+
+    return {
+      timestamp: Date.now(),
+      gatewayOnline: connectionState === 'CONNECTED',
+      currentRaw: stats.currentRaw,
+      filteredRaw: stats.filteredRaw !== null ? stats.filteredRaw : stats.average,
+      average: stats.average,
+      minimum: stats.minimum,
+      maximum: stats.maximum,
+      range: stats.range,
+      stability: stats.stability,
+      sampleCount: stats.sampleCount,
+      volumeMl: currentVol,
+      percentage: pct,
+      maxCapacity: maxVol,
+      isCalibrated: volumeInterpolation.isCalibrated,
+      calibrationPointCount: confirmedPoints.length,
+      capState: automationFeedbackState?.capState || 'OPEN',
+      systemState:
+        automationFeedbackState?.systemState ||
+        (automationFeedbackState?.capState === 'CLOSED'
+          ? 'CAP CLOSED — AUTOMATION ACTIVE'
+          : 'CAP OPEN — AUTOMATION DISABLED'),
+      motorStatus,
+      isMotorRunning: motorStatus === 'RUNNING',
+      selectedProfileName: automationFeedbackState?.selectedProfileName || null,
+      selectedDegrees: automationFeedbackState?.targetMotorPosition ?? null,
+      selectedDirection:
+        automationFeedbackState?.motorDirection === 'IDLE'
+          ? null
+          : (automationFeedbackState?.motorDirection as MotorDirection),
+      lastMotorOperation: lastOperation,
+    };
+  }, [
+    connectionState,
+    stats,
+    volumeInterpolation,
+    points,
+    automationFeedbackState,
+    motorStatus,
+    lastOperation,
+  ]);
+
+  // Handler for executing commands dispatched from remote clients when running on Gateway host
+  const handleExecuteLocalCommand = useCallback(
+    async (
+      action: RemoteControlAction,
+      requestId: string
+    ): Promise<{ success: boolean; message: string; capState?: CapState }> => {
+      console.log(`[GATEWAY HOST] Executing remote command '${action}' (req: ${requestId})`);
+      try {
+        if (action === 'CAP_OPEN') {
+          await triggerCapOpen();
+          return {
+            success: true,
+            message: 'Physical cap OPEN completed by Gateway',
+            capState: 'OPEN',
+          };
+        }
+        if (action === 'CAP_CLOSE') {
+          await triggerCapClose();
+          return {
+            success: true,
+            message: 'Physical cap CLOSE completed by Gateway',
+            capState: 'CLOSED',
+          };
+        }
+        if (action === 'EMERGENCY_STOP') {
+          await emergencyStop();
+          return {
+            success: true,
+            message: 'Emergency Stop executed on Gateway',
+          };
+        }
+        return { success: false, message: `Unsupported action: ${action}` };
+      } catch (err: any) {
+        return { success: false, message: err?.message || 'Gateway command execution failed' };
+      }
+    },
+    [triggerCapOpen, triggerCapClose, emergencyStop]
+  );
+
+  // Multi-Device Real-time Sync Hook
+  const {
+    syncStatus,
+    isGatewayOnline,
+    isThisDeviceGateway,
+    gatewayMessage,
+    remoteSnapshot,
+    isAuthenticated,
+    serverUrl,
+    setServerUrl,
+    authenticate,
+    logout,
+    broadcastCurrentState,
+    triggerRemoteCapOpen,
+    triggerRemoteCapClose,
+    triggerRemoteEmergencyStop,
+  } = useSync({
+    localConnectionState: connectionState,
+    localSnapshotProvider: getLocalSnapshot,
+    onExecuteLocalCommand: handleExecuteLocalCommand,
+  });
+
+  // Gateway broadcasts state whenever local readings or automation state changes
+  useEffect(() => {
+    if (isThisDeviceGateway) {
+      broadcastCurrentState();
+    }
+  }, [
+    isThisDeviceGateway,
+    stats,
+    volumeInterpolation,
+    automationFeedbackState,
+    motorStatus,
+    lastOperation,
+    broadcastCurrentState,
+  ]);
+
+  // Remote client builds rolling chart buffers from incoming snapshots
+  useEffect(() => {
+    if (!isThisDeviceGateway && remoteSnapshot) {
+      if (remoteSnapshot.currentRaw !== null) {
+        setRemoteReadings((prev) => {
+          const updated = [...prev, { timestamp: remoteSnapshot.timestamp, raw: remoteSnapshot.currentRaw! }];
+          return updated.slice(-20);
+        });
+      }
+      if (remoteSnapshot.volumeMl !== null) {
+        setRemoteVolumeHistory((prev) => {
+          const updated = [...prev, { timestamp: remoteSnapshot.timestamp, volumeMl: remoteSnapshot.volumeMl! }];
+          return updated.slice(-30);
+        });
+      }
+    }
+  }, [isThisDeviceGateway, remoteSnapshot]);
+
+  // Derived effective values across local gateway and remote client
+  const effectiveStats: LoadCellStats = useMemo(() => {
+    if (isThisDeviceGateway || !remoteSnapshot) return stats;
+    return {
+      currentRaw: remoteSnapshot.currentRaw,
+      filteredRaw: remoteSnapshot.filteredRaw,
+      average: remoteSnapshot.average,
+      minimum: remoteSnapshot.minimum,
+      maximum: remoteSnapshot.maximum,
+      range: remoteSnapshot.range,
+      stability: remoteSnapshot.stability || 'WAITING FOR READINGS',
+      sampleCount: remoteSnapshot.sampleCount || 0,
+      history: remoteReadings,
+    };
+  }, [isThisDeviceGateway, remoteSnapshot, stats, remoteReadings]);
+
+  const effectiveVolumeInterpolation: InterpolationResult = useMemo(() => {
+    if (isThisDeviceGateway || !remoteSnapshot) return volumeInterpolation;
+    return {
+      volumeMl: remoteSnapshot.volumeMl,
+      isCalibrated: remoteSnapshot.isCalibrated,
+      isOutOfRange: false,
+      statusMessage: remoteSnapshot.isCalibrated ? 'Calibrated' : 'Uncalibrated',
+    };
+  }, [isThisDeviceGateway, remoteSnapshot, volumeInterpolation]);
+
+  const effectiveCapState: CapState = useMemo(() => {
+    if (isThisDeviceGateway || !remoteSnapshot) {
+      return automationFeedbackState?.capState || 'OPEN';
+    }
+    return remoteSnapshot.capState || 'OPEN';
+  }, [isThisDeviceGateway, remoteSnapshot, automationFeedbackState]);
+
+  const effectiveSystemState: string = useMemo(() => {
+    if (isThisDeviceGateway || !remoteSnapshot) {
+      return automationFeedbackState?.systemState || '';
+    }
+    return remoteSnapshot.systemState || '';
+  }, [isThisDeviceGateway, remoteSnapshot, automationFeedbackState]);
+
+  const effectiveMotorStatus: MotorStatus = useMemo(() => {
+    if (isThisDeviceGateway || !remoteSnapshot) return motorStatus;
+    return remoteSnapshot.motorStatus || 'IDLE';
+  }, [isThisDeviceGateway, remoteSnapshot, motorStatus]);
+
+  const effectiveAutomationRunning: boolean = useMemo(() => {
+    if (isThisDeviceGateway || !remoteSnapshot) return isAutomationRunning;
+    return remoteSnapshot.isMotorRunning || false;
+  }, [isThisDeviceGateway, remoteSnapshot, isAutomationRunning]);
+
+  const effectiveLastOperation: LastMotorOperation | null = useMemo(() => {
+    if (isThisDeviceGateway || !remoteSnapshot) return lastOperation;
+    return remoteSnapshot.lastMotorOperation || null;
+  }, [isThisDeviceGateway, remoteSnapshot, lastOperation]);
+
+  const effectiveReadings = isThisDeviceGateway ? readings : (remoteReadings.length > 0 ? remoteReadings : readings);
+  const effectiveVolumeHistory = isThisDeviceGateway ? volumeHistory : (remoteVolumeHistory.length > 0 ? remoteVolumeHistory : volumeHistory);
+  const effectiveConnectionState: ConnectionState = isThisDeviceGateway
+    ? connectionState
+    : isGatewayOnline
+    ? 'CONNECTED'
+    : 'DISCONNECTED';
+
+  // Effective Cap Control Dispatchers
+  const handleEffectiveTriggerCapClose = useCallback(async () => {
+    if (isThisDeviceGateway) {
+      await triggerCapClose();
+    } else {
+      if (!isGatewayOnline) {
+        alert('ESP32 GATEWAY OFFLINE – REMOTE CONTROL UNAVAILABLE');
+        return;
+      }
+      if (!isAuthenticated) {
+        setIsAuthModalOpen(true);
+        return;
+      }
+      const res = await triggerRemoteCapClose();
+      if (!res.success) {
+        alert(`Remote command failed: ${res.message}`);
+      }
+    }
+  }, [isThisDeviceGateway, isGatewayOnline, isAuthenticated, triggerCapClose, triggerRemoteCapClose]);
+
+  const handleEffectiveTriggerCapOpen = useCallback(async () => {
+    if (isThisDeviceGateway) {
+      await triggerCapOpen();
+    } else {
+      if (!isGatewayOnline) {
+        alert('ESP32 GATEWAY OFFLINE – REMOTE CONTROL UNAVAILABLE');
+        return;
+      }
+      if (!isAuthenticated) {
+        setIsAuthModalOpen(true);
+        return;
+      }
+      const res = await triggerRemoteCapOpen();
+      if (!res.success) {
+        alert(`Remote command failed: ${res.message}`);
+      }
+    }
+  }, [isThisDeviceGateway, isGatewayOnline, isAuthenticated, triggerCapOpen, triggerRemoteCapOpen]);
+
+  const handleEffectiveEmergencyStop = useCallback(async () => {
+    if (isThisDeviceGateway) {
+      await emergencyStop();
+    } else {
+      if (!isGatewayOnline) return;
+      await triggerRemoteEmergencyStop();
+    }
+  }, [isThisDeviceGateway, isGatewayOnline, emergencyStop, triggerRemoteEmergencyStop]);
+
   // Synchronize stability threshold with settings
   useEffect(() => {
     setStabilityThreshold(settings.stabilityThreshold);
@@ -157,18 +436,23 @@ export function App() {
       <Header
         connectionState={connectionState}
         systemReady={systemReady}
-        motorStatus={motorStatus}
+        motorStatus={effectiveMotorStatus}
         baudRate={settings.baudRate}
         onBaudRateChange={handleBaudRateChange}
         onConnect={() => connect(settings.baudRate)}
         onDisconnect={disconnect}
-        onEmergencyStop={emergencyStop}
+        onEmergencyStop={handleEffectiveEmergencyStop}
         onToggleConsole={() => setIsConsoleOpen(!isConsoleOpen)}
         isConsoleOpen={isConsoleOpen}
         isWebSerialSupported={isWebSerialSupported}
         errorMessage={errorMessage}
         onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         isMobileMenuOpen={isMobileMenuOpen}
+        syncStatus={syncStatus}
+        isThisDeviceGateway={isThisDeviceGateway}
+        isGatewayOnline={isGatewayOnline}
+        isAuthenticated={isAuthenticated}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
       />
 
       {/* Main Container: Sidebar + Page View */}
@@ -182,7 +466,7 @@ export function App() {
           calibrationPointCount={points.filter((p) => p.status === 'CONFIRMED').length}
           motorProfileCount={profiles.length}
           mode={mode}
-          isMotorRunning={motorStatus === 'RUNNING'}
+          isMotorRunning={effectiveMotorStatus === 'RUNNING'}
           isMobileOpen={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
@@ -190,55 +474,73 @@ export function App() {
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 bg-[#070b14]/50 w-full min-w-0">
           {activePage === 'driver-dashboard' && (
             <DriverDashboardPage
-              volumeInterpolation={volumeInterpolation}
-              stats={stats}
+              volumeInterpolation={effectiveVolumeInterpolation}
+              stats={effectiveStats}
               calibrationPoints={points}
-              capState={automationFeedbackState?.capState || 'OPEN'}
-              systemState={automationFeedbackState?.systemState}
-              isAutomationRunning={isAutomationRunning}
-              motorStatus={motorStatus}
-              connectionState={connectionState}
-              onTriggerCapClose={triggerCapClose}
-              onTriggerCapOpen={triggerCapOpen}
+              capState={effectiveCapState}
+              systemState={effectiveSystemState}
+              isAutomationRunning={effectiveAutomationRunning}
+              motorStatus={effectiveMotorStatus}
+              connectionState={effectiveConnectionState}
+              isThisDeviceGateway={isThisDeviceGateway}
+              isGatewayOnline={isGatewayOnline}
+              gatewayMessage={gatewayMessage}
+              isAuthenticated={isAuthenticated}
+              onRequestAuth={() => setIsAuthModalOpen(true)}
+              onTriggerCapClose={handleEffectiveTriggerCapClose}
+              onTriggerCapOpen={handleEffectiveTriggerCapOpen}
             />
           )}
 
           {activePage === 'dashboard' && (
             <DashboardPage
-              connectionState={connectionState}
+              connectionState={effectiveConnectionState}
               errorMessage={errorMessage}
               onRetryConnect={() => connect(settings.baudRate)}
               hx711Status={hx711Status}
-              motorStatus={motorStatus}
-              stats={stats}
-              volumeInterpolation={volumeInterpolation}
-              volumeHistory={volumeHistory}
+              motorStatus={effectiveMotorStatus}
+              stats={effectiveStats}
+              volumeInterpolation={effectiveVolumeInterpolation}
+              volumeHistory={effectiveVolumeHistory}
               calibrationPoints={points}
               motorProfiles={profiles}
-              lastOperation={lastOperation}
+              lastOperation={effectiveLastOperation}
               mode={mode}
-              readings={readings}
-              onTriggerCapClose={triggerCapClose}
-              onTriggerCapOpen={triggerCapOpen}
-              isAutomationRunning={isAutomationRunning}
-              automationFeedbackState={automationFeedbackState}
+              readings={effectiveReadings}
+              onTriggerCapClose={handleEffectiveTriggerCapClose}
+              onTriggerCapOpen={handleEffectiveTriggerCapOpen}
+              isAutomationRunning={effectiveAutomationRunning}
+              automationFeedbackState={
+                isThisDeviceGateway
+                  ? automationFeedbackState
+                  : {
+                      ...automationFeedbackState,
+                      capState: effectiveCapState,
+                      systemState: (effectiveSystemState as any) || 'CAP OPEN — AUTOMATION DISABLED',
+                    }
+              }
               onModeChange={setMode}
-              onEmergencyStop={triggerEmergencyStop}
+              onEmergencyStop={handleEffectiveEmergencyStop}
+              isThisDeviceGateway={isThisDeviceGateway}
+              isGatewayOnline={isGatewayOnline}
+              gatewayMessage={gatewayMessage}
+              isAuthenticated={isAuthenticated}
+              onRequestAuth={() => setIsAuthModalOpen(true)}
             />
           )}
 
           {activePage === 'live-monitoring' && (
             <LiveMonitoringPage
-              stats={stats}
-              readings={readings}
-              volumeInterpolation={volumeInterpolation}
+              stats={effectiveStats}
+              readings={effectiveReadings}
+              volumeInterpolation={effectiveVolumeInterpolation}
               stabilityThreshold={stabilityThreshold}
               onThresholdChange={(th) => {
                 setStabilityThreshold(th);
                 handleSaveSettings({ ...settings, stabilityThreshold: th });
               }}
               onClearReadings={clearReadings}
-              connectionState={connectionState}
+              connectionState={effectiveConnectionState}
               calibrationPoints={points}
             />
           )}
@@ -296,17 +598,25 @@ export function App() {
             <AutomationPage
               mode={mode}
               onModeChange={setMode}
-              feedbackState={automationFeedbackState}
-              onTriggerCapClose={triggerCapClose}
-              onTriggerCapOpen={triggerCapOpen}
-              onEmergencyStop={triggerEmergencyStop}
+              feedbackState={
+                isThisDeviceGateway
+                  ? automationFeedbackState
+                  : {
+                      ...automationFeedbackState,
+                      capState: effectiveCapState,
+                      systemState: (effectiveSystemState as any) || 'CAP OPEN — AUTOMATION DISABLED',
+                    }
+              }
+              onTriggerCapClose={handleEffectiveTriggerCapClose}
+              onTriggerCapOpen={handleEffectiveTriggerCapOpen}
+              onEmergencyStop={handleEffectiveEmergencyStop}
               onZeroPosition={zeroMotorPosition}
               onUpdateConfig={updateAutomationConfig}
               events={automationHistory}
               onClearHistory={clearAutomationHistory}
               calibrationPoints={points}
               motorProfiles={profiles}
-              connectionState={connectionState}
+              connectionState={effectiveConnectionState}
             />
           )}
 
@@ -339,6 +649,22 @@ export function App() {
         messages={messages}
         onSendCommand={sendCommand}
         isConnected={connectionState === 'CONNECTED'}
+      />
+
+      {/* Cockpit Remote Security PIN Authorization Modal */}
+      <RemoteAuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        isAuthenticated={isAuthenticated}
+        onAuthenticate={async (pin) => {
+          const res = await authenticate(pin);
+          return { success: res.success, error: res.error };
+        }}
+        onLogout={logout}
+        serverUrl={serverUrl}
+        onUpdateServerUrl={setServerUrl}
+        isGatewayOnline={isGatewayOnline}
+        isThisDeviceGateway={isThisDeviceGateway}
       />
     </div>
   );

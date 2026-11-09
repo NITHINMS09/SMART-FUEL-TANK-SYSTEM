@@ -210,3 +210,57 @@ export interface AutomaticCapState {
   lastOperationTime: number | null;
   errorMessage: string | null;
 }
+
+// ==========================================
+// MULTI-DEVICE REAL-TIME SYNCHRONIZATION TYPES
+// ==========================================
+
+export type SyncDeviceRole = 'GATEWAY' | 'CLIENT';
+export type SyncConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR';
+
+export interface TelemetrySnapshot {
+  timestamp: number;
+  gatewayOnline: boolean;
+  gatewayDeviceId?: string;
+  currentRaw: number | null;
+  filteredRaw: number | null;
+  average: number | null;
+  minimum: number | null;
+  maximum: number | null;
+  range: number | null;
+  stability: StabilityStatus;
+  sampleCount: number;
+  volumeMl: number | null;
+  percentage: number;
+  maxCapacity: number;
+  isCalibrated: boolean;
+  calibrationPointCount: number;
+  capState: CapState;
+  systemState: string;
+  motorStatus: MotorStatus;
+  isMotorRunning: boolean;
+  selectedProfileName?: string | null;
+  selectedDegrees?: number | null;
+  selectedDirection?: MotorDirection | null;
+  lastMotorOperation?: LastMotorOperation | null;
+}
+
+export type RemoteControlAction = 'CAP_OPEN' | 'CAP_CLOSE' | 'EMERGENCY_STOP';
+
+export interface RemoteCommandRequest {
+  type: 'REQUEST_COMMAND';
+  action: RemoteControlAction;
+  requestId: string;
+  token: string;
+  timestamp: number;
+}
+
+export interface RemoteCommandAck {
+  type: 'COMMAND_ACK';
+  requestId: string;
+  action: RemoteControlAction;
+  success: boolean;
+  message: string;
+  capState?: CapState;
+  timestamp: number;
+}

@@ -32,6 +32,11 @@ interface DriverDashboardPageProps {
   isAutomationRunning: boolean;
   motorStatus: MotorStatus;
   connectionState: ConnectionState;
+  isThisDeviceGateway?: boolean;
+  isGatewayOnline?: boolean;
+  gatewayMessage?: string;
+  isAuthenticated?: boolean;
+  onRequestAuth?: () => void;
   onTriggerCapClose: () => Promise<void>;
   onTriggerCapOpen: () => Promise<void>;
 }
@@ -45,6 +50,11 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
   isAutomationRunning,
   motorStatus,
   connectionState,
+  isThisDeviceGateway = true,
+  isGatewayOnline = false,
+  gatewayMessage,
+  isAuthenticated = false,
+  onRequestAuth,
   onTriggerCapClose,
   onTriggerCapOpen,
 }) => {
@@ -96,9 +106,20 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
   // Speedometer Needle: Resting at cruising 60 km/h (sweep -120° to +120° for 0-240 km/h)
   const speedNeedleAngle = -60;
 
+  // Control Disabled check considering gateway and client modes
+  const isControlDisabled =
+    isProcessing ||
+    isAutomationRunning ||
+    motorStatus === 'RUNNING' ||
+    (isThisDeviceGateway ? connectionState !== 'CONNECTED' : !isGatewayOnline);
+
   // Button Click Handlers
   const handleCapCloseClick = async () => {
-    if (isProcessing || isAutomationRunning || motorStatus === 'RUNNING' || connectionState !== 'CONNECTED') return;
+    if (isControlDisabled) return;
+    if (!isThisDeviceGateway && !isAuthenticated) {
+      if (onRequestAuth) onRequestAuth();
+      return;
+    }
     setIsProcessing(true);
     try {
       await onTriggerCapClose();
@@ -108,7 +129,11 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
   };
 
   const handleCapOpenClick = async () => {
-    if (isProcessing || isAutomationRunning || motorStatus === 'RUNNING' || connectionState !== 'CONNECTED') return;
+    if (isControlDisabled) return;
+    if (!isThisDeviceGateway && !isAuthenticated) {
+      if (onRequestAuth) onRequestAuth();
+      return;
+    }
     setIsProcessing(true);
     try {
       await onTriggerCapOpen();
@@ -221,9 +246,29 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
             D [AUTO]
           </span>
           <span className="text-slate-600 mx-0.5 sm:mx-1">|</span>
-          <span className="text-emerald-400 flex items-center space-x-1 text-[10px] sm:text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse shrink-0" />
-            <span>{connectionState === 'CONNECTED' ? 'ESP32 LINKED' : 'OFFLINE'}</span>
+          <span className="flex items-center space-x-1.5 text-[10px] sm:text-xs">
+            <span
+              className={`w-1.5 h-1.5 rounded-full inline-block shrink-0 ${
+                (isThisDeviceGateway ? connectionState === 'CONNECTED' : isGatewayOnline)
+                  ? 'bg-emerald-400 animate-pulse'
+                  : 'bg-rose-500'
+              }`}
+            />
+            <span
+              className={
+                (isThisDeviceGateway ? connectionState === 'CONNECTED' : isGatewayOnline)
+                  ? 'text-emerald-400'
+                  : 'text-rose-400'
+              }
+            >
+              {isThisDeviceGateway
+                ? connectionState === 'CONNECTED'
+                  ? 'ESP32 LINKED'
+                  : 'OFFLINE'
+                : isGatewayOnline
+                ? 'SYNC LINKED'
+                : 'GATEWAY OFFLINE'}
+            </span>
           </span>
         </div>
 
@@ -249,6 +294,21 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Prominent ESP32 Gateway Offline Status Banner (Requirement 2) */}
+      {!isThisDeviceGateway && !isGatewayOnline && (
+        <div className="relative z-20 mb-4 p-3.5 sm:p-4 rounded-xl bg-rose-950/90 border border-rose-500/80 shadow-[0_0_25px_rgba(244,63,94,0.4)] flex items-center space-x-3 text-rose-200 font-mono text-xs animate-pulse">
+          <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+          <div className="min-w-0">
+            <div className="font-extrabold uppercase tracking-wider text-rose-300 text-xs sm:text-sm">
+              ESP32 GATEWAY OFFLINE – REMOTE CONTROL UNAVAILABLE
+            </div>
+            <div className="text-[10px] sm:text-[11px] text-rose-300/80 mt-0.5">
+              The authoritative Web Serial hardware gateway (Laptop A) is disconnected. Live hardware telemetry is paused and remote cap controls are disabled.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Cluster Stage: Gauges & Center Console */}
       <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-center justify-center my-auto py-2 sm:py-4">
@@ -497,12 +557,7 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
             <button
               type="button"
               onClick={handleCapCloseClick}
-              disabled={
-                connectionState !== 'CONNECTED' ||
-                isAutomationRunning ||
-                motorStatus === 'RUNNING' ||
-                isProcessing
-              }
+              disabled={isControlDisabled}
               className={`group relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 min-h-[50px] sm:min-h-[64px] ${
                 capState === 'CLOSED'
                   ? 'bg-gradient-to-b from-cyan-600 to-cyan-800 border-cyan-300 text-white shadow-[0_0_30px_rgba(6,182,212,0.6)]'
@@ -531,12 +586,7 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
             <button
               type="button"
               onClick={handleCapOpenClick}
-              disabled={
-                connectionState !== 'CONNECTED' ||
-                isAutomationRunning ||
-                motorStatus === 'RUNNING' ||
-                isProcessing
-              }
+              disabled={isControlDisabled}
               className={`group relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 min-h-[50px] sm:min-h-[64px] ${
                 capState === 'OPEN'
                   ? 'bg-gradient-to-b from-amber-600 to-amber-800 border-amber-300 text-white shadow-[0_0_30px_rgba(245,158,11,0.6)]'

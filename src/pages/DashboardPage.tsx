@@ -53,6 +53,11 @@ interface DashboardPageProps {
   automationFeedbackState?: AutomationFeedbackState;
   onModeChange?: (mode: OperatingMode) => void;
   onEmergencyStop?: () => Promise<void>;
+  isThisDeviceGateway?: boolean;
+  isGatewayOnline?: boolean;
+  gatewayMessage?: string;
+  isAuthenticated?: boolean;
+  onRequestAuth?: () => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -75,10 +80,39 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   automationFeedbackState,
   onModeChange,
   onEmergencyStop,
+  isThisDeviceGateway = true,
+  isGatewayOnline = false,
+  gatewayMessage,
+  isAuthenticated = false,
+  onRequestAuth,
 }) => {
   const [isRetrying, setIsRetrying] = React.useState(false);
   const confirmedCalPoints = calibrationPoints.filter((p) => p.status === 'CONFIRMED');
   const isCalibrated = confirmedCalPoints.length >= 2;
+
+  const isCapControlDisabled =
+    (!isThisDeviceGateway && !isGatewayOnline) ||
+    (isThisDeviceGateway && connectionState !== 'CONNECTED') ||
+    isAutomationRunning ||
+    motorStatus === 'RUNNING';
+
+  const handleCapCloseClick = async () => {
+    if (isCapControlDisabled) return;
+    if (!isThisDeviceGateway && !isAuthenticated) {
+      if (onRequestAuth) onRequestAuth();
+      return;
+    }
+    await onTriggerCapClose();
+  };
+
+  const handleCapOpenClick = async () => {
+    if (isCapControlDisabled) return;
+    if (!isThisDeviceGateway && !isAuthenticated) {
+      if (onRequestAuth) onRequestAuth();
+      return;
+    }
+    await onTriggerCapOpen();
+  };
 
   const handleRetry = async () => {
     setIsRetrying(true);
@@ -101,6 +135,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Prominent ESP32 Gateway Offline Status Banner (Requirement 2) */}
+      {!isThisDeviceGateway && !isGatewayOnline && (
+        <div className="p-4 rounded-xl bg-rose-950/80 border border-rose-500/80 shadow-glow-red flex items-center space-x-3 text-rose-200 font-mono text-xs animate-pulse">
+          <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+          <div className="min-w-0">
+            <div className="font-extrabold uppercase tracking-wider text-rose-300 text-sm">
+              ESP32 GATEWAY OFFLINE – REMOTE CONTROL UNAVAILABLE
+            </div>
+            <div className="text-xs text-rose-300/80 mt-0.5">
+              The authoritative Web Serial hardware gateway (Laptop A) is currently disconnected. Live hardware telemetry is paused and remote cap controls are disabled.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Prominent Connection Error Banner in Connection Dashboard */}
       {(connectionState === 'ERROR' || errorMessage) && (
         <div className="p-4 rounded-xl bg-rose-950/60 border border-rose-500/60 shadow-glow-red space-y-3 font-mono text-xs text-rose-200">
@@ -548,10 +597,28 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+            {!isThisDeviceGateway && (
+              <span
+                className={`text-[10px] px-2.5 py-1 rounded-lg border font-mono text-center ${
+                  isGatewayOnline
+                    ? isAuthenticated
+                      ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300'
+                      : 'bg-amber-950/80 border-amber-500/60 text-amber-300'
+                    : 'bg-rose-950/80 border-rose-500/60 text-rose-300'
+                }`}
+              >
+                {isGatewayOnline
+                  ? isAuthenticated
+                    ? 'REMOTE AUTH OK'
+                    : 'PIN REQUIRED'
+                  : 'GATEWAY OFFLINE'}
+              </span>
+            )}
+
             <button
               type="button"
-              onClick={onTriggerCapClose}
-              disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
+              onClick={handleCapCloseClick}
+              disabled={isCapControlDisabled}
               className={`px-4 sm:px-5 py-2.5 rounded-xl font-mono text-xs font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                 automationFeedbackState?.capState === 'CLOSED'
                   ? 'bg-cyan-600 text-slate-950 shadow-glow-cyan'
@@ -565,8 +632,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             <button
               type="button"
-              onClick={onTriggerCapOpen}
-              disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
+              onClick={handleCapOpenClick}
+              disabled={isCapControlDisabled}
               className={`px-4 sm:px-5 py-2.5 rounded-xl font-mono text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                 automationFeedbackState?.capState === 'OPEN'
                   ? 'bg-sky-600 text-white shadow-glow-blue'
