@@ -403,8 +403,6 @@ wss.on('connection', (ws, req) => {
           );
           break;
         }
-          break;
-        }
 
         // -------------------------------------------------------------
         // 5. COMMAND ACKNOWLEDGEMENT (Gateway -> Server -> Clients)

@@ -222,3 +222,4 @@ export function useRefillDetection({
     isRefillActive: capState === 'OPEN',
   };
 }
+
