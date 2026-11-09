@@ -14,8 +14,9 @@ import {
   Globe,
   Wifi,
   Key,
+  RotateCcw,
 } from 'lucide-react';
-import { GatewayAuthResult } from '../../services/syncService';
+import { GatewayAuthResult, HealthCheckResult, OFFICIAL_RENDER_WS_URL } from '../../services/syncService';
 
 interface RemoteAuthModalProps {
   isOpen: boolean;
@@ -26,7 +27,8 @@ interface RemoteAuthModalProps {
   serverUrl: string;
   apiUrl?: string;
   onUpdateServerUrl: (url: string) => void;
-  onCheckHealth?: (url?: string) => Promise<{ ok: boolean; latencyMs: number; statusText: string; details?: any }>;
+  onResetToOfficialRender?: () => void;
+  onCheckHealth?: (url?: string) => Promise<HealthCheckResult>;
   isGatewayOnline: boolean;
   isThisDeviceGateway: boolean;
   syncStatus?: string;
@@ -44,6 +46,7 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
   serverUrl,
   apiUrl,
   onUpdateServerUrl,
+  onResetToOfficialRender,
   onCheckHealth,
   isGatewayOnline,
   isThisDeviceGateway,
@@ -61,10 +64,15 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
   const [showConfig, setShowConfig] = useState(false);
   const [healthStatus, setHealthStatus] = useState<{
     checking: boolean;
-    result?: { ok: boolean; latencyMs: number; statusText: string };
+    result?: HealthCheckResult;
   }>({ checking: false });
 
   if (!isOpen) return null;
+
+  // Detect whether customUrl has invalid Vercel:4001 or non-localhost:4001 pattern
+  const isInvalidUrl =
+    customUrl.includes('vercel.app') ||
+    (customUrl.includes(':4001') && !customUrl.includes('localhost') && !customUrl.includes('127.0.0.1'));
 
   const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,6 +113,15 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
     }
   };
 
+  const handleResetToRender = () => {
+    setCustomUrl(OFFICIAL_RENDER_WS_URL);
+    if (onResetToOfficialRender) {
+      onResetToOfficialRender();
+    } else {
+      onUpdateServerUrl(OFFICIAL_RENDER_WS_URL);
+    }
+  };
+
   const handleTestHealth = async () => {
     if (!onCheckHealth) return;
     setHealthStatus({ checking: true });
@@ -114,7 +131,20 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
     } catch (err: any) {
       setHealthStatus({
         checking: false,
-        result: { ok: false, latencyMs: 0, statusText: err?.message || 'Check failed' },
+        result: {
+          ok: false,
+          latencyMs: 0,
+          statusText: 'Check failed',
+          backendReachable: false,
+          backendStatusText: err?.message || 'Backend Unavailable',
+          authEndpointAvailable: false,
+          authStatusText: 'Auth Unavailable',
+          wsRelayAvailable: false,
+          wsStatusText: 'Relay Unavailable',
+          testedWsUrl: customUrl,
+          testedHttpUrl: apiUrl || '',
+          isInvalidConfig: isInvalidUrl,
+        },
       });
     }
   };
@@ -151,6 +181,27 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
           </button>
         </div>
 
+        {/* Invalid URL Warning Banner if stale vercel:4001 detected */}
+        {isInvalidUrl && (
+          <div className="p-3 bg-amber-950/80 border border-amber-500/80 rounded-xl text-amber-200 text-[11px] space-y-2">
+            <div className="flex items-center space-x-1.5 text-amber-400 font-bold">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Invalid WebSocket URL Detected</span>
+            </div>
+            <p className="text-amber-300/90 leading-relaxed text-[10px]">
+              Vercel domains and port 4001 cannot host persistent WebSockets. The system requires the official Render relay server.
+            </p>
+            <button
+              type="button"
+              onClick={handleResetToRender}
+              className="w-full py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-[10px] uppercase flex items-center justify-center space-x-1.5 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset to Official Render Server</span>
+            </button>
+          </div>
+        )}
+
         {/* Current Role & Gateway Status Banner */}
         <div className="p-3 rounded-xl bg-[#070c18] border border-slate-800 space-y-2">
           <div className="flex items-center justify-between">
@@ -170,15 +221,35 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
             <span className="text-slate-400">Hardware Gateway Status:</span>
             <span
               className={`font-bold flex items-center space-x-1 ${
-                isGatewayOnline ? 'text-emerald-400' : 'text-rose-400'
+                isThisDeviceGateway
+                  ? syncStatus === 'CONNECTED'
+                    ? 'text-emerald-400'
+                    : 'text-amber-400'
+                  : isGatewayOnline
+                  ? 'text-emerald-400'
+                  : 'text-rose-400'
               }`}
             >
               <span
                 className={`w-2 h-2 rounded-full inline-block ${
-                  isGatewayOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                  isThisDeviceGateway
+                    ? syncStatus === 'CONNECTED'
+                      ? 'bg-emerald-400 animate-pulse'
+                      : 'bg-amber-400'
+                    : isGatewayOnline
+                    ? 'bg-emerald-400 animate-pulse'
+                    : 'bg-rose-400'
                 }`}
               />
-              <span>{isGatewayOnline ? 'ONLINE & LINKED' : 'OFFLINE'}</span>
+              <span>
+                {isThisDeviceGateway
+                  ? syncStatus === 'CONNECTED'
+                    ? 'ONLINE & BROADCASTING'
+                    : 'USB LINKED (RELAY OFFLINE)'
+                  : isGatewayOnline
+                  ? 'ONLINE & LINKED'
+                  : 'OFFLINE'}
+              </span>
             </span>
           </div>
 
@@ -242,7 +313,7 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
                   inputMode="numeric"
                   value={pin}
                   onChange={(e) => setPin(e.target.value)}
-                  placeholder="e.g. 124580"
+                  placeholder="Enter Security PIN"
                   maxLength={16}
                   required
                   autoFocus
@@ -251,7 +322,7 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
                 <KeyRound className="absolute right-3 top-3 w-4 h-4 text-slate-500" />
               </div>
               <p className="text-[10px] text-slate-500 mt-1">
-                Default PIN is <code className="text-cyan-400 font-bold">124580</code>. Required to send CAP OPEN/CLOSE commands.
+                Enter your authorized security PIN to operate cap controls remotely.
               </p>
             </div>
 
@@ -311,30 +382,75 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
             )}
           </div>
 
+          {/* Detailed Multi-Point Diagnostic Results */}
           {healthStatus.result && (
-            <div
-              className={`p-2 rounded-lg border text-[10px] flex items-center justify-between ${
-                healthStatus.result.ok
-                  ? 'bg-emerald-950/60 border-emerald-600/60 text-emerald-300'
-                  : 'bg-rose-950/60 border-rose-600/60 text-rose-300'
-              }`}
-            >
-              <span>Server Reachability:</span>
-              <span className="font-bold">{healthStatus.result.statusText}</span>
+            <div className="p-2.5 rounded-lg border border-slate-800 bg-[#070c18] space-y-1.5 text-[10px]">
+              <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+                <span className="text-slate-400 uppercase font-bold">Diagnostic Status:</span>
+                <span
+                  className={`font-bold ${
+                    healthStatus.result.ok ? 'text-emerald-400' : 'text-amber-400'
+                  }`}
+                >
+                  {healthStatus.result.statusText}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Backend Web Service:</span>
+                <span
+                  className={`font-bold ${
+                    healthStatus.result.backendReachable ? 'text-emerald-400' : 'text-rose-400'
+                  }`}
+                >
+                  {healthStatus.result.backendStatusText}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Authentication Endpoint:</span>
+                <span
+                  className={`font-bold ${
+                    healthStatus.result.authEndpointAvailable ? 'text-emerald-400' : 'text-rose-400'
+                  }`}
+                >
+                  {healthStatus.result.authStatusText}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">WebSocket Relay:</span>
+                <span
+                  className={`font-bold ${
+                    healthStatus.result.wsRelayAvailable ? 'text-emerald-400' : 'text-rose-400'
+                  }`}
+                >
+                  {healthStatus.result.wsStatusText}
+                </span>
+              </div>
             </div>
           )}
 
           {showConfig && (
             <form onSubmit={handleConfigSave} className="space-y-3 bg-[#070c18] p-3 rounded-lg border border-slate-800">
               <div>
-                <label className="block text-slate-400 text-[10px] uppercase font-semibold mb-1">
-                  WebSocket Relay URL
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-slate-400 text-[10px] uppercase font-semibold">
+                    WebSocket Relay URL
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleResetToRender}
+                    className="text-[10px] text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                  >
+                    Reset to Render
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={customUrl}
                   onChange={(e) => setCustomUrl(e.target.value)}
-                  placeholder="wss://... or ws://localhost:4001"
+                  placeholder="wss://smart-fuel-tank-system.onrender.com"
                   className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-cyan-300 font-mono text-[11px] focus:border-cyan-500 focus:outline-none"
                 />
               </div>
@@ -345,7 +461,7 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => applyPreset('wss://smart-fuel-tank-system.onrender.com')}
+                    onClick={() => applyPreset(OFFICIAL_RENDER_WS_URL)}
                     className="p-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-[10px] text-left flex items-center space-x-1 cursor-pointer"
                   >
                     <Globe className="w-3 h-3 text-cyan-400 shrink-0" />

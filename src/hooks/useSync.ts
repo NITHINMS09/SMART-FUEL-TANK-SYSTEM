@@ -156,6 +156,11 @@ export function useSync({
     return await SyncService.checkServerHealth(customUrl);
   }, []);
 
+  const resetToOfficialRender = useCallback(() => {
+    SyncService.resetToOfficialRender();
+    setServerUrlState(SyncService.getServerUrl());
+  }, []);
+
   // Remote Action Dispatchers
   const triggerRemoteCapOpen = useCallback(async (): Promise<CommandResponse> => {
     return await SyncService.sendRemoteCommand('CAP_OPEN');
@@ -182,6 +187,7 @@ export function useSync({
     gatewayKey,
     setGatewayKey,
     setServerUrl,
+    resetToOfficialRender,
     checkServerHealth,
     authenticate,
     logout,

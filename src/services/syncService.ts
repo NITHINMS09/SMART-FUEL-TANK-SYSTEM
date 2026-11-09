@@ -8,7 +8,8 @@
  *  - Authoritative Gateway telemetry publishing with secret key authentication (Laptop A)
  *  - Remote telemetry consumption (Mobile B, Laptop C, etc.)
  *  - Authenticated command dispatching & physical hardware acknowledgement tracking
- *  - Robust multi-endpoint authentication with descriptive diagnostic feedback
+ *  - Strict sanitization of WebSocket URLs (purging invalid Vercel:4001 entries)
+ *  - Comprehensive multi-tier diagnostic health checks
  * ==============================================================================
  */
 
@@ -20,6 +21,9 @@ import {
   CapState,
 } from '../types';
 
+export const OFFICIAL_RENDER_WS_URL = 'wss://smart-fuel-tank-system.onrender.com';
+export const OFFICIAL_RENDER_API_URL = 'https://smart-fuel-tank-system.onrender.com';
+
 export interface CommandResponse {
   success: boolean;
   message: string;
@@ -30,6 +34,16 @@ export interface HealthCheckResult {
   ok: boolean;
   latencyMs: number;
   statusText: string;
+  backendReachable: boolean;
+  backendStatusText: string;
+  authEndpointAvailable: boolean;
+  authStatusText: string;
+  wsRelayAvailable: boolean;
+  wsStatusText: string;
+  testedWsUrl: string;
+  testedHttpUrl: string;
+  isInvalidConfig: boolean;
+  configWarning?: string;
   details?: any;
 }
 
@@ -97,9 +111,87 @@ class SyncServiceClass {
     const storedKey = localStorage.getItem('smart_tank_gateway_key');
     this.gatewayKey = storedKey && storedKey.trim() ? storedKey.trim() : 'smart_tank_gateway_secret_2026';
 
-    // Determine initial server & API URLs
+    // Determine initial server & API URLs (with auto-sanitization of stale vercel:4001 URLs)
     this.serverUrl = this.resolveInitialServerUrl();
     this.apiUrl = this.resolveInitialApiUrl();
+  }
+
+  /**
+   * Check whether a WebSocket URL is invalid (e.g. contains vercel.app or port 4001 on non-localhost)
+   */
+  public isInvalidRelayUrl(url: string | null | undefined): boolean {
+    if (!url || typeof url !== 'string') return true;
+    const lower = url.toLowerCase().trim();
+    if (!lower) return true;
+
+    // Vercel serverless domains do NOT support persistent WebSockets
+    if (lower.includes('vercel.app')) return true;
+
+    // Port 4001 is only valid for local development; cloud platforms use standard SSL (443)
+    if (lower.includes(':4001') && !lower.includes('localhost') && !lower.includes('127.0.0.1')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Strictly sanitize any WebSocket Relay URL
+   */
+  public sanitizeRelayUrl(url: string | null | undefined): string {
+    if (!url || typeof url !== 'string') return OFFICIAL_RENDER_WS_URL;
+    let trimmed = url.trim();
+    if (!trimmed) return OFFICIAL_RENDER_WS_URL;
+
+    // Reject Vercel domains for WebSocket connections
+    if (trimmed.includes('vercel.app')) {
+      return OFFICIAL_RENDER_WS_URL;
+    }
+
+    // Strip :4001 if non-localhost
+    if (!trimmed.includes('localhost') && !trimmed.includes('127.0.0.1')) {
+      trimmed = trimmed.replace(/:4001\/?$/, '').replace(/:4001\//, '/');
+    }
+
+    // Normalize protocol
+    if (!trimmed.startsWith('ws://') && !trimmed.startsWith('wss://')) {
+      if (trimmed.startsWith('http://')) {
+        trimmed = trimmed.replace('http://', 'ws://');
+      } else if (trimmed.startsWith('https://')) {
+        trimmed = trimmed.replace('https://', 'wss://');
+      } else {
+        trimmed = `wss://${trimmed}`;
+      }
+    }
+
+    return trimmed;
+  }
+
+  /**
+   * Strictly sanitize any HTTP API URL
+   */
+  public sanitizeApiUrl(url: string | null | undefined): string {
+    if (!url || typeof url !== 'string') return OFFICIAL_RENDER_API_URL;
+    let trimmed = url.trim();
+    if (!trimmed) return OFFICIAL_RENDER_API_URL;
+
+    // Strip :4001 if non-localhost
+    if (!trimmed.includes('localhost') && !trimmed.includes('127.0.0.1')) {
+      trimmed = trimmed.replace(/:4001\/?$/, '').replace(/:4001\//, '/');
+    }
+
+    // Normalize protocol
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      if (trimmed.startsWith('ws://')) {
+        trimmed = trimmed.replace('ws://', 'http://');
+      } else if (trimmed.startsWith('wss://')) {
+        trimmed = trimmed.replace('wss://', 'https://');
+      } else {
+        trimmed = `https://${trimmed}`;
+      }
+    }
+
+    return trimmed.replace(/\/+$/, '');
   }
 
   /**
@@ -107,21 +199,31 @@ class SyncServiceClass {
    */
   public resolveInitialServerUrl(): string {
     const saved = localStorage.getItem('smart_tank_sync_url');
-    if (saved && saved.trim()) return saved.trim();
+    if (saved && saved.trim()) {
+      const trimmed = saved.trim();
+      // Purge invalid URLs from localStorage immediately
+      if (this.isInvalidRelayUrl(trimmed)) {
+        console.warn(`[SYNC] Purging invalid stored WebSocket URL (${trimmed}). Resetting to official Render server.`);
+        localStorage.removeItem('smart_tank_sync_url');
+      } else {
+        return this.sanitizeRelayUrl(trimmed);
+      }
+    }
 
     const envUrl = (import.meta as any).env?.VITE_SYNC_SERVER_URL;
-    if (envUrl && envUrl.trim()) return envUrl.trim();
+    if (envUrl && envUrl.trim() && !this.isInvalidRelayUrl(envUrl.trim())) {
+      return this.sanitizeRelayUrl(envUrl.trim());
+    }
 
     if (typeof window !== 'undefined') {
       const host = window.location.hostname;
-      // Local development default
+      // Local development default only
       if (host === 'localhost' || host === '127.0.0.1') {
         return `ws://${host}:4001`;
       }
-      // Production Cloud Backend default (WSS over standard 443 SSL)
-      return 'wss://smart-fuel-tank-system.onrender.com';
     }
-    return 'wss://smart-fuel-tank-system.onrender.com';
+    // Production Cloud Backend default (WSS over standard 443 SSL)
+    return OFFICIAL_RENDER_WS_URL;
   }
 
   /**
@@ -129,10 +231,19 @@ class SyncServiceClass {
    */
   public resolveInitialApiUrl(): string {
     const saved = localStorage.getItem('smart_tank_api_url');
-    if (saved && saved.trim()) return saved.trim();
+    if (saved && saved.trim()) {
+      const trimmed = saved.trim();
+      if (trimmed.includes(':4001') && !trimmed.includes('localhost') && !trimmed.includes('127.0.0.1')) {
+        localStorage.removeItem('smart_tank_api_url');
+      } else {
+        return this.sanitizeApiUrl(trimmed);
+      }
+    }
 
     const envUrl = (import.meta as any).env?.VITE_SYNC_API_URL;
-    if (envUrl && envUrl.trim()) return envUrl.trim();
+    if (envUrl && envUrl.trim()) {
+      return this.sanitizeApiUrl(envUrl.trim());
+    }
 
     if (typeof window !== 'undefined') {
       const host = window.location.hostname;
@@ -140,7 +251,7 @@ class SyncServiceClass {
         return `http://${host}:4001`;
       }
     }
-    return 'https://smart-fuel-tank-system.onrender.com';
+    return OFFICIAL_RENDER_API_URL;
   }
 
   public getStatus(): SyncConnectionStatus {
@@ -184,28 +295,28 @@ class SyncServiceClass {
   }
 
   /**
+   * Reset WebSocket and API URLs to the official Render cloud backend
+   */
+  public resetToOfficialRender(): void {
+    localStorage.removeItem('smart_tank_sync_url');
+    localStorage.removeItem('smart_tank_api_url');
+    this.serverUrl = OFFICIAL_RENDER_WS_URL;
+    this.apiUrl = OFFICIAL_RENDER_API_URL;
+    this.disconnect();
+    this.connect();
+  }
+
+  /**
    * Update target sync server URL and reconnect cleanly
    */
   public setServerUrl(newUrl: string): void {
-    let trimmed = newUrl.trim();
-    if (!trimmed) return;
+    const sanitized = this.sanitizeRelayUrl(newUrl);
 
-    // Normalize protocol
-    if (!trimmed.startsWith('ws://') && !trimmed.startsWith('wss://')) {
-      if (trimmed.startsWith('http://')) {
-        trimmed = trimmed.replace('http://', 'ws://');
-      } else if (trimmed.startsWith('https://')) {
-        trimmed = trimmed.replace('https://', 'wss://');
-      } else {
-        trimmed = `wss://${trimmed}`;
-      }
-    }
+    if (sanitized !== this.serverUrl) {
+      this.serverUrl = sanitized;
+      localStorage.setItem('smart_tank_sync_url', sanitized);
 
-    if (trimmed !== this.serverUrl) {
-      this.serverUrl = trimmed;
-      localStorage.setItem('smart_tank_sync_url', trimmed);
-
-      const derivedApi = trimmed.replace(/^ws(s?):\/\//, 'http$1://');
+      const derivedApi = this.sanitizeApiUrl(sanitized);
       this.apiUrl = derivedApi;
       localStorage.setItem('smart_tank_api_url', derivedApi);
 
@@ -229,6 +340,9 @@ class SyncServiceClass {
 
     this.isExplicitDisconnect = false;
     this.setStatus('CONNECTING');
+
+    // Make sure we connect using a sanitized URL
+    this.serverUrl = this.sanitizeRelayUrl(this.serverUrl);
 
     try {
       this.ws = new WebSocket(this.serverUrl);
@@ -399,8 +513,8 @@ class SyncServiceClass {
   /**
    * Authenticate remote client with Security PIN using multi-tier fallback:
    *  Tier 1: Direct WebSocket authentication if connected.
-   *  Tier 2: Primary HTTP API (/api/auth) on backend server.
-   *  Tier 3: Same-Origin API (/api/auth) on hosting provider (e.g. Vercel Serverless).
+   *  Tier 2: Primary HTTP API (/api/auth) on backend server (Render).
+   *  Tier 3: Same-Origin API (/api/auth) on hosting provider (Vercel Serverless).
    */
   public async loginWithPin(pin: string): Promise<{ success: boolean; token?: string; error?: string }> {
     const cleanPin = pin.trim();
@@ -417,7 +531,6 @@ class SyncServiceClass {
         if (wsRes.success) {
           return wsRes;
         }
-        // If server explicitly confirmed invalid PIN, return rejected status immediately
         if (wsRes.error && wsRes.error.toLowerCase().includes('pin')) {
           return wsRes;
         }
@@ -427,9 +540,9 @@ class SyncServiceClass {
     }
 
     // -------------------------------------------------------------
-    // Tier 2: Try Primary HTTP API (/api/auth)
+    // Tier 2: Try Primary HTTP API (/api/auth) on Render
     // -------------------------------------------------------------
-    const primaryApiUrl = this.apiUrl.replace(/\/+$/, '');
+    const primaryApiUrl = this.sanitizeApiUrl(this.apiUrl);
     try {
       const res = await this.fetchWithTimeout(
         `${primaryApiUrl}/api/auth`,
@@ -454,7 +567,7 @@ class SyncServiceClass {
     }
 
     // -------------------------------------------------------------
-    // Tier 3: Same-Origin Serverless API (/api/auth) fallback
+    // Tier 3: Same-Origin Serverless API (/api/auth) fallback (Vercel)
     // -------------------------------------------------------------
     if (typeof window !== 'undefined' && window.location.origin) {
       const originApiUrl = window.location.origin.replace(/\/+$/, '');
@@ -487,7 +600,7 @@ class SyncServiceClass {
     // Detailed descriptive diagnostic message if completely unreachable
     return {
       success: false,
-      error: `Cannot reach authentication backend (${primaryApiUrl}). If deploying on Render, the free instance may take ~30-50s to wake up from idle sleep. Please verify your server URL in Settings.`,
+      error: `Cannot reach authentication backend. If deploying on Render, the free instance may take ~30-50s to wake up from idle sleep. Please verify your server URL in Settings.`,
     };
   }
 
@@ -531,40 +644,150 @@ class SyncServiceClass {
   }
 
   /**
-   * Test health and reachability of target backend server
+   * Comprehensive multi-point diagnostic health test:
+   *  1. Backend Web Service Check (Render HTTP /health or /api/health)
+   *  2. Authentication Endpoint Check (/api/auth)
+   *  3. WebSocket Relay Reachability Check (live handshake)
    */
   public async checkServerHealth(customUrl?: string): Promise<HealthCheckResult> {
-    const rawUrl = (customUrl || this.apiUrl).trim();
-    const httpBase = rawUrl.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/+$/, '');
+    const rawInput = (customUrl || this.serverUrl).trim();
+    const isInvalidConfig = this.isInvalidRelayUrl(rawInput);
+    const configWarning = isInvalidConfig
+      ? 'Vercel domain or port 4001 cannot host persistent WebSockets. Using official Render relay.'
+      : undefined;
+
+    const testedWsUrl = this.sanitizeRelayUrl(rawInput);
+    const testedHttpUrl = this.sanitizeApiUrl(customUrl || this.apiUrl);
     const start = Date.now();
 
+    let backendReachable = false;
+    let backendStatusText = 'Backend Unavailable';
+    let authEndpointAvailable = false;
+    let authStatusText = 'Authentication Endpoint Unavailable';
+    let wsRelayAvailable = false;
+    let wsStatusText = 'WebSocket Relay Unavailable';
+    let detailsData: any = null;
+
+    // -------------------------------------------------------------
+    // Test 1: Backend Web Service Reachability (Render /health or /api/health)
+    // -------------------------------------------------------------
     try {
-      const res = await this.fetchWithTimeout(`${httpBase}/api/health`, { method: 'GET' }, 6000);
+      const res = await this.fetchWithTimeout(`${testedHttpUrl}/api/health`, { method: 'GET' }, 5000);
       const latencyMs = Date.now() - start;
 
       if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        return {
-          ok: true,
-          latencyMs,
-          statusText: `ONLINE (${latencyMs}ms)`,
-          details: data,
-        };
+        backendReachable = true;
+        backendStatusText = `ONLINE (${latencyMs}ms)`;
+        detailsData = await res.json().catch(() => ({}));
+      } else {
+        backendReachable = false;
+        backendStatusText = `HTTP ${res.status}: ${res.statusText || 'Error'} (Cold-starting)`;
       }
-      return {
-        ok: false,
-        latencyMs,
-        statusText: `HTTP ${res.status}: ${res.statusText || 'Error'}`,
-      };
     } catch (err: any) {
-      return {
-        ok: false,
-        latencyMs: Date.now() - start,
-        statusText: err?.message?.includes('aborted')
-          ? 'Connection timed out (Server may be cold-starting)'
-          : err?.message || 'Server Unreachable',
-      };
+      backendReachable = false;
+      backendStatusText = err?.message?.includes('aborted')
+        ? 'Timed out (Backend cold-starting ~30-50s)'
+        : 'Backend Unavailable';
     }
+
+    // -------------------------------------------------------------
+    // Test 2: Authentication Endpoint Check (/api/auth)
+    // -------------------------------------------------------------
+    try {
+      const res = await this.fetchWithTimeout(`${testedHttpUrl}/api/auth`, { method: 'OPTIONS' }, 4000);
+      if (res.ok || res.status === 204 || res.status === 405) {
+        authEndpointAvailable = true;
+        authStatusText = 'Ready (Render Relay)';
+      }
+    } catch {
+      // Try same-origin Vercel fallback
+      if (typeof window !== 'undefined' && window.location.origin) {
+        try {
+          const originRes = await this.fetchWithTimeout(
+            `${window.location.origin}/api/auth`,
+            { method: 'OPTIONS' },
+            4000
+          );
+          if (originRes.ok || originRes.status === 204 || originRes.status === 405) {
+            authEndpointAvailable = true;
+            authStatusText = 'Ready (Vercel Serverless Fallback)';
+          }
+        } catch {
+          authEndpointAvailable = false;
+        }
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Test 3: WebSocket Relay Reachability Check (live handshake)
+    // -------------------------------------------------------------
+    wsRelayAvailable = await new Promise<boolean>((resolve) => {
+      let resolved = false;
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          try {
+            probeWs.close();
+          } catch (e) {}
+          resolve(false);
+        }
+      }, 4000);
+
+      let probeWs: WebSocket;
+      try {
+        probeWs = new WebSocket(testedWsUrl);
+        probeWs.onopen = () => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timer);
+            try {
+              probeWs.close();
+            } catch (e) {}
+            resolve(true);
+          }
+        };
+        probeWs.onerror = () => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timer);
+            resolve(false);
+          }
+        };
+      } catch {
+        clearTimeout(timer);
+        resolve(false);
+      }
+    });
+
+    if (wsRelayAvailable) {
+      wsStatusText = 'WebSocket Relay Connected';
+    } else {
+      wsStatusText = 'WebSocket Relay Unavailable';
+    }
+
+    const overallOk = wsRelayAvailable && (backendReachable || authEndpointAvailable);
+    const overallLatency = Date.now() - start;
+
+    return {
+      ok: overallOk,
+      latencyMs: overallLatency,
+      statusText: overallOk
+        ? `SYSTEMS READY (${overallLatency}ms)`
+        : wsRelayAvailable
+        ? 'RELAY CONNECTED (Auth fallback active)'
+        : 'RELAY UNAVAILABLE',
+      backendReachable,
+      backendStatusText,
+      authEndpointAvailable,
+      authStatusText,
+      wsRelayAvailable,
+      wsStatusText,
+      testedWsUrl,
+      testedHttpUrl,
+      isInvalidConfig,
+      configWarning,
+      details: detailsData,
+    };
   }
 
   /**

@@ -1,7 +1,7 @@
 // Vercel Serverless Function: /api/auth
 import crypto from 'crypto';
 
-const DEFAULT_AUTH_PIN = (process.env.REMOTE_AUTH_PIN || '124580').trim();
+const DEFAULT_AUTH_PIN = (process.env.REMOTE_AUTH_PIN || '792416').trim();
 const AUTH_TOKEN_SECRET = (process.env.AUTH_TOKEN_SECRET || process.env.REMOTE_AUTH_PIN || 'smart_tank_auth_secret_2026').trim();
 
 async function parseBody(req) {

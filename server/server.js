@@ -16,7 +16,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import crypto from 'crypto';
 
 const PORT = parseInt(process.env.PORT || '4001', 10);
-const DEFAULT_AUTH_PIN = (process.env.REMOTE_AUTH_PIN || '124580').trim();
+const DEFAULT_AUTH_PIN = (process.env.REMOTE_AUTH_PIN || '792416').trim();
 const GATEWAY_SECRET = (process.env.GATEWAY_SECRET || 'smart_tank_gateway_secret_2026').trim();
 const AUTH_TOKEN_SECRET = (process.env.AUTH_TOKEN_SECRET || process.env.REMOTE_AUTH_PIN || 'smart_tank_auth_secret_2026').trim();
 

@@ -9,6 +9,6 @@ services:
       - key: NODE_VERSION
         value: 22.x
       - key: REMOTE_AUTH_PIN
-        value: "124580"
+        sync: false
       - key: GATEWAY_SECRET
-        value: "smart_tank_gateway_secret_2026"
+        sync: false

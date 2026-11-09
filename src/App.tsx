@@ -237,6 +237,7 @@ export function App() {
     serverUrl,
     apiUrl,
     setServerUrl,
+    resetToOfficialRender,
     checkServerHealth,
     authenticate,
     logout,
@@ -669,6 +670,7 @@ export function App() {
         serverUrl={serverUrl}
         apiUrl={apiUrl}
         onUpdateServerUrl={setServerUrl}
+        onResetToOfficialRender={resetToOfficialRender}
         onCheckHealth={checkServerHealth}
         isGatewayOnline={isGatewayOnline}
         isThisDeviceGateway={isThisDeviceGateway}
