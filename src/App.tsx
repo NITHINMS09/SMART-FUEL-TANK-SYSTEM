@@ -13,6 +13,7 @@ import { Sidebar, PageId } from './components/common/Sidebar';
 import { SerialConsole } from './components/common/SerialConsole';
 
 // Pages
+import { DriverDashboardPage } from './pages/DriverDashboardPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { LiveMonitoringPage } from './pages/LiveMonitoringPage';
 import { CalibrationPage } from './pages/CalibrationPage';
@@ -179,6 +180,21 @@ export function App() {
         />
 
         <main className="flex-1 overflow-y-auto p-6 bg-[#070b14]/50">
+          {activePage === 'driver-dashboard' && (
+            <DriverDashboardPage
+              volumeInterpolation={volumeInterpolation}
+              stats={stats}
+              calibrationPoints={points}
+              capState={automationFeedbackState?.capState || 'OPEN'}
+              systemState={automationFeedbackState?.systemState}
+              isAutomationRunning={isAutomationRunning}
+              motorStatus={motorStatus}
+              connectionState={connectionState}
+              onTriggerCapClose={triggerCapClose}
+              onTriggerCapOpen={triggerCapOpen}
+            />
+          )}
+
           {activePage === 'dashboard' && (
             <DashboardPage
               connectionState={connectionState}

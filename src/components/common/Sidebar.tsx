@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Gauge,
   LayoutDashboard,
   Activity,
   Scale,
@@ -14,6 +15,7 @@ import {
 import { OperatingMode } from '../../types';
 
 export type PageId =
+  | 'driver-dashboard'
   | 'dashboard'
   | 'live-monitoring'
   | 'calibration'
@@ -48,6 +50,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     badge?: string | number;
     badgeColor?: string;
   }[] = [
+    {
+      id: 'driver-dashboard',
+      label: 'Driver Dashboard',
+      icon: Gauge,
+      badge: 'CLUSTER',
+      badgeColor: 'bg-cyan-950 text-cyan-300 border border-cyan-700/50',
+    },
     {
       id: 'dashboard',
       label: 'Dashboard',
