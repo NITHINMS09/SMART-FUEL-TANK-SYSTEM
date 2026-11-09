@@ -127,6 +127,29 @@ export class StorageService {
   }
 
   /**
+   * Load cap state (OPEN or CLOSED)
+   */
+  static loadCapState(): 'OPEN' | 'CLOSED' {
+    try {
+      const data = localStorage.getItem('smart_tank_cap_state');
+      return data === 'CLOSED' ? 'CLOSED' : 'OPEN';
+    } catch {
+      return 'OPEN';
+    }
+  }
+
+  /**
+   * Save cap state (OPEN or CLOSED)
+   */
+  static saveCapState(state: 'OPEN' | 'CLOSED'): void {
+    try {
+      localStorage.setItem('smart_tank_cap_state', state);
+    } catch (e) {
+      console.error('Failed to save cap state:', e);
+    }
+  }
+
+  /**
    * Load current motor commanded position (in degrees)
    */
   static loadMotorPosition(): number {

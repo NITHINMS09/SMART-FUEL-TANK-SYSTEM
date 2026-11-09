@@ -210,47 +210,85 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       </div>
 
       {/* Active Automatic Mode Continuous Feedback Control Ribbon */}
-      {mode === 'AUTOMATIC' && automationFeedbackState && (
+      {automationFeedbackState && (
         <div className="panel-glass rounded-xl p-4 border-cyan-500/50 bg-[#070e1c] font-mono text-xs space-y-3 shadow-glow-cyan animate-fadeIn">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cyan-900/60 pb-2.5">
             <div className="flex items-center space-x-2.5">
               <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
+                <span
+                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                    automationFeedbackState.capState === 'CLOSED' ? 'bg-cyan-400' : 'bg-slate-500'
+                  }`}
+                />
+                <span
+                  className={`relative inline-flex rounded-full h-3 w-3 ${
+                    automationFeedbackState.capState === 'CLOSED' ? 'bg-cyan-500' : 'bg-slate-400'
+                  }`}
+                />
               </span>
               <span className="font-bold uppercase tracking-wider text-white text-xs">
-                Automatic Mode Active: Continuous Closed-Loop Feedback
+                Automatic Motor Control System
               </span>
               <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                  automationFeedbackState.status === 'ADJUSTING'
+                className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                  automationFeedbackState.systemState === 'CAP CLOSED — AUTOMATION ACTIVE'
+                    ? 'bg-cyan-950/90 border-cyan-500 text-cyan-300'
+                    : automationFeedbackState.systemState === 'AUTOMATIC MOTOR ADJUSTING'
+                    ? 'bg-amber-950/90 border-amber-500 text-amber-300'
+                    : automationFeedbackState.systemState === 'LIQUID LEVEL CHANGED'
                     ? 'bg-amber-950/80 border-amber-600 text-amber-300'
-                    : automationFeedbackState.status === 'STABLE'
-                    ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
-                    : automationFeedbackState.status === 'UNSTABLE'
-                    ? 'bg-amber-950/60 border-amber-500 text-amber-300'
-                    : 'bg-cyan-950/80 border-cyan-600 text-cyan-300'
+                    : automationFeedbackState.systemState === 'MOTOR STABLE'
+                    ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
+                    : automationFeedbackState.systemState === 'MONITORING LIQUID LEVEL'
+                    ? 'bg-sky-950/80 border-sky-500 text-sky-300'
+                    : automationFeedbackState.systemState === 'SENSOR ERROR'
+                    ? 'bg-rose-950/80 border-rose-500 text-rose-300'
+                    : 'bg-slate-900 border-slate-700 text-slate-400'
                 }`}
               >
-                {automationFeedbackState.status}
+                {automationFeedbackState.systemState ||
+                  (automationFeedbackState.capState === 'CLOSED'
+                    ? 'CAP CLOSED — AUTOMATION ACTIVE'
+                    : 'CAP OPEN — AUTOMATION DISABLED')}
               </span>
             </div>
 
             <div className="flex items-center space-x-2">
-              {onModeChange && (
-                <button
-                  type="button"
-                  onClick={() => onModeChange('MANUAL')}
-                  className="px-3 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold transition-all"
-                >
-                  Switch to Manual
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={onTriggerCapClose}
+                disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs tracking-wider transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  automationFeedbackState.capState === 'CLOSED'
+                    ? 'bg-cyan-600 text-slate-950 shadow-glow-cyan'
+                    : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-800/60'
+                }`}
+                title="Close cap and enable automatic adjustments"
+              >
+                <Lock className="w-3.5 h-3.5 fill-current" />
+                <span>CAP CLOSE</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onTriggerCapOpen}
+                disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs tracking-wider transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  automationFeedbackState.capState === 'OPEN'
+                    ? 'bg-sky-600 text-white shadow-glow-blue'
+                    : 'bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-800/60'
+                }`}
+                title="Open cap and disable automatic adjustments"
+              >
+                <Unlock className="w-3.5 h-3.5" />
+                <span>CAP OPEN</span>
+              </button>
+
               {onEmergencyStop && (
                 <button
                   type="button"
                   onClick={onEmergencyStop}
-                  className="px-3.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold tracking-wider shadow-sm transition-all"
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold tracking-wider shadow-sm transition-all"
                 >
                   STOP
                 </button>
@@ -481,13 +519,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <h3 className="text-sm font-mono font-bold uppercase text-white tracking-wider flex items-center space-x-2">
                 <span>Automatic Cap Control System</span>
                 <span
-                  className={`text-[10px] px-2 py-0.5 rounded border font-mono ${
-                    isAutomationRunning || motorStatus === 'RUNNING'
-                      ? 'bg-amber-950/80 border-amber-600 text-amber-300 animate-pulse'
-                      : 'bg-emerald-950/60 border-emerald-700/60 text-emerald-400'
+                  className={`text-[10px] px-2.5 py-0.5 rounded-full border font-mono ${
+                    automationFeedbackState?.systemState === 'CAP CLOSED — AUTOMATION ACTIVE'
+                      ? 'bg-cyan-950/90 border-cyan-500 text-cyan-300 shadow-glow-cyan'
+                      : automationFeedbackState?.systemState === 'AUTOMATIC MOTOR ADJUSTING'
+                      ? 'bg-amber-950/90 border-amber-500 text-amber-300 animate-pulse'
+                      : automationFeedbackState?.systemState === 'LIQUID LEVEL CHANGED'
+                      ? 'bg-amber-950/80 border-amber-600 text-amber-300'
+                      : automationFeedbackState?.systemState === 'MOTOR STABLE'
+                      ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
+                      : automationFeedbackState?.systemState === 'MONITORING LIQUID LEVEL'
+                      ? 'bg-sky-950/80 border-sky-500 text-sky-300'
+                      : automationFeedbackState?.systemState === 'SENSOR ERROR'
+                      ? 'bg-rose-950/80 border-rose-500 text-rose-300'
+                      : 'bg-slate-900 border-slate-700 text-slate-400'
                   }`}
                 >
-                  {isAutomationRunning || motorStatus === 'RUNNING' ? 'EXECUTING MOTOR' : 'READY'}
+                  {automationFeedbackState?.systemState ||
+                    (automationFeedbackState?.capState === 'CLOSED'
+                      ? 'CAP CLOSED — AUTOMATION ACTIVE'
+                      : 'CAP OPEN — AUTOMATION DISABLED')}
                 </span>
               </h3>
               <p className="text-xs text-slate-400 font-mono mt-0.5">
@@ -499,24 +550,32 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div className="flex items-center space-x-3">
             <button
               type="button"
-              onClick={onTriggerCapOpen}
+              onClick={onTriggerCapClose}
               disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
-              className="px-5 py-2.5 rounded-xl bg-sky-950/80 hover:bg-sky-900 active:scale-95 border border-sky-600/60 text-sky-300 font-mono text-xs font-bold flex items-center space-x-2 shadow-glow-blue transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-              title="Capture fresh reading, calculate volume, and execute configured OPEN rotation"
+              className={`px-5 py-2.5 rounded-xl font-mono text-xs font-extrabold flex items-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                automationFeedbackState?.capState === 'CLOSED'
+                  ? 'bg-cyan-600 text-slate-950 shadow-glow-cyan'
+                  : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-800/60'
+              }`}
+              title="Close cap to configured angle and enable continuous automatic adjustments"
             >
-              <Unlock className="w-4 h-4" />
-              <span>CAP OPEN</span>
+              <Lock className="w-4 h-4 fill-current" />
+              <span>CAP CLOSE (ENABLE AUTO)</span>
             </button>
 
             <button
               type="button"
-              onClick={onTriggerCapClose}
+              onClick={onTriggerCapOpen}
               disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
-              className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-slate-950 font-mono text-xs font-extrabold flex items-center space-x-2 shadow-glow-cyan transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-              title="Capture fresh reading, calculate volume, and execute configured CLOSE rotation"
+              className={`px-5 py-2.5 rounded-xl font-mono text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                automationFeedbackState?.capState === 'OPEN'
+                  ? 'bg-sky-600 text-white shadow-glow-blue'
+                  : 'bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-800/60'
+              }`}
+              title="Open cap to configured angle and disable automatic adjustments"
             >
-              <Lock className="w-4 h-4 fill-current" />
-              <span>CAP CLOSE</span>
+              <Unlock className="w-4 h-4" />
+              <span>CAP OPEN (DISABLE AUTO)</span>
             </button>
           </div>
         </div>

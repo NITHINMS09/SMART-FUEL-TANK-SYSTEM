@@ -82,52 +82,63 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
     isMotorMoving,
     stability,
     errorMessage,
+    capState = 'OPEN',
+    isAutomationEnabled = false,
+    systemState = 'CAP OPEN — AUTOMATION DISABLED',
+    selectedProfileName,
+    lastCommandedTargetAngle,
   } = feedbackState;
 
-  // Status badge coloring & labels
-  const getStatusInfo = (st: AutomationStatus) => {
-    switch (st) {
-      case 'ADJUSTING':
+  // Status badge coloring & labels for Requirement 7 exact states
+  const getStatusInfo = (sysState: string) => {
+    switch (sysState) {
+      case 'CAP OPEN — AUTOMATION DISABLED':
         return {
-          label: 'ADJUSTING MOTOR',
-          color: 'text-amber-400 bg-amber-950/80 border-amber-600',
+          label: 'CAP OPEN — AUTOMATION DISABLED',
+          color: 'text-slate-400 bg-slate-900 border-slate-700',
+          dot: 'bg-slate-500',
+        };
+      case 'CAP CLOSED — AUTOMATION ACTIVE':
+        return {
+          label: 'CAP CLOSED — AUTOMATION ACTIVE',
+          color: 'text-cyan-300 bg-cyan-950/90 border-cyan-500 shadow-glow-cyan',
+          dot: 'bg-cyan-400 animate-pulse',
+        };
+      case 'MONITORING LIQUID LEVEL':
+        return {
+          label: 'MONITORING LIQUID LEVEL',
+          color: 'text-sky-300 bg-sky-950/80 border-sky-500',
+          dot: 'bg-sky-400 animate-pulse',
+        };
+      case 'LIQUID LEVEL CHANGED':
+        return {
+          label: 'LIQUID LEVEL CHANGED',
+          color: 'text-amber-300 bg-amber-950/90 border-amber-500 animate-pulse',
           dot: 'bg-amber-400 animate-ping',
         };
-      case 'STABLE':
+      case 'AUTOMATIC MOTOR ADJUSTING':
         return {
-          label: 'TARGET REACHED & STABLE',
+          label: 'AUTOMATIC MOTOR ADJUSTING',
+          color: 'text-amber-400 bg-amber-950/90 border-amber-600',
+          dot: 'bg-amber-400 animate-spin',
+        };
+      case 'MOTOR STABLE':
+        return {
+          label: 'MOTOR STABLE',
           color: 'text-emerald-400 bg-emerald-950/80 border-emerald-600',
           dot: 'bg-emerald-400',
         };
-      case 'UNSTABLE':
-        return {
-          label: 'AWAITING STABILITY',
-          color: 'text-amber-300 bg-amber-950/60 border-amber-500',
-          dot: 'bg-amber-400 animate-pulse',
-        };
-      case 'MONITORING':
-        return {
-          label: 'CONTINUOUS MONITORING',
-          color: 'text-cyan-400 bg-cyan-950/80 border-cyan-600',
-          dot: 'bg-cyan-400 animate-pulse',
-        };
-      case 'ERROR':
-        return {
-          label: 'SYSTEM HALTED / ERROR',
-          color: 'text-rose-400 bg-rose-950/80 border-rose-600',
-          dot: 'bg-rose-400',
-        };
-      case 'IDLE':
+      case 'SENSOR ERROR':
       default:
         return {
-          label: 'IDLE (MANUAL MODE)',
-          color: 'text-slate-400 bg-slate-900 border-slate-700',
-          dot: 'bg-slate-500',
+          label: 'SENSOR ERROR',
+          color: 'text-rose-400 bg-rose-950/80 border-rose-600',
+          dot: 'bg-rose-400',
         };
     }
   };
 
-  const statusInfo = getStatusInfo(status);
+  const statusInfo = getStatusInfo(systemState);
 
   // Calculate SVG circular dial parameters for 0° to 360° display
   const dialRadius = 54;
@@ -138,66 +149,73 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
 
   return (
     <div className="space-y-6 font-mono text-xs">
-      {/* 1. Mode Switcher & Emergency Stop Header */}
+      {/* 1. Cap State & Automatic Mode Master Header */}
       <div className="panel-glass rounded-xl p-5 border-slate-800 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <div
             className={`p-2.5 rounded-lg border transition-all ${
-              mode === 'AUTOMATIC'
+              isAutomationEnabled
                 ? 'bg-cyan-950/90 border-cyan-500 text-cyan-300 shadow-glow-cyan'
                 : 'bg-slate-900 border-slate-800 text-slate-400'
             }`}
           >
-            <Cpu className={`w-5 h-5 ${mode === 'AUTOMATIC' ? 'animate-pulse' : ''}`} />
+            {isAutomationEnabled ? (
+              <Lock className="w-5 h-5 animate-pulse text-cyan-400" />
+            ) : (
+              <Unlock className="w-5 h-5 text-slate-400" />
+            )}
           </div>
           <div>
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-sm font-bold uppercase text-white tracking-wider">
-                Operating Mode Control
+                Automatic Cap Control & Motor Automation
               </h2>
               <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center space-x-1.5 ${statusInfo.color}`}
+                className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center space-x-1.5 ${statusInfo.color}`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
                 <span>{statusInfo.label}</span>
               </span>
             </div>
             <p className="text-slate-400 text-xs mt-0.5">
-              {mode === 'AUTOMATIC'
-                ? 'Continuous closed-loop feedback: Live HX711 -> Volume ml -> Target angle -> Differential motor adjustment.'
-                : 'Manual Mode: Autonomous adjustment suspended. Direct manual control enabled.'}
+              {isAutomationEnabled
+                ? 'CAP CLOSED: Continuous automatic motor adjustments are ACTIVE based on live load-cell readings.'
+                : 'CAP OPEN: Automatic motor adjustments are DISABLED. Motor will NEVER rotate automatically while cap is open.'}
             </p>
           </div>
         </div>
 
-        {/* Action Controls */}
+        {/* Primary Cap Action Controls */}
         <div className="flex items-center space-x-2.5">
-          {/* Toggle Mode */}
-          <div className="flex items-center p-1 bg-[#060a14] border border-slate-800 rounded-lg shadow-inner">
-            <button
-              type="button"
-              onClick={() => onModeChange('MANUAL')}
-              className={`px-4 py-2 rounded-md font-bold text-xs tracking-wider transition-all ${
-                mode === 'MANUAL'
-                  ? 'bg-slate-800 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              MANUAL
-            </button>
-            <button
-              type="button"
-              onClick={() => onModeChange('AUTOMATIC')}
-              className={`px-4 py-2 rounded-md font-bold text-xs tracking-wider transition-all flex items-center space-x-1.5 ${
-                mode === 'AUTOMATIC'
-                  ? 'bg-cyan-600 text-slate-950 shadow-glow-cyan'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {mode === 'AUTOMATIC' && <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping mr-1" />}
-              <span>AUTOMATIC</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onTriggerCapClose}
+            disabled={!isConnected || isMotorMoving}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+              capState === 'CLOSED'
+                ? 'bg-cyan-600 text-slate-950 shadow-glow-cyan'
+                : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-800/60'
+            }`}
+            title="Close cap to configured angle and enable continuous automatic adjustments"
+          >
+            <Lock className="w-4 h-4 fill-current" />
+            <span>CAP CLOSE (ENABLE AUTO)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onTriggerCapOpen}
+            disabled={!isConnected || isMotorMoving}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+              capState === 'OPEN'
+                ? 'bg-sky-600 text-white shadow-glow-blue'
+                : 'bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-800/60'
+            }`}
+            title="Open cap to configured angle and disable automatic adjustments"
+          >
+            <Unlock className="w-4 h-4" />
+            <span>CAP OPEN (DISABLE AUTO)</span>
+          </button>
 
           {/* Zero Position Button */}
           <button
@@ -205,7 +223,7 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
             onClick={onZeroPosition}
             disabled={!isConnected || isMotorMoving}
             title="Zero motor angular reference position (set current angle as 0°)"
-            className="px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold transition-all disabled:opacity-40"
+            className="px-3 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold transition-all disabled:opacity-40"
           >
             Zero 0°
           </button>
@@ -214,7 +232,7 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
           <button
             type="button"
             onClick={onEmergencyStop}
-            className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold tracking-wider flex items-center space-x-1.5 shadow-glow-red transition-all"
+            className="px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold tracking-wider flex items-center space-x-1.5 shadow-glow-red transition-all"
             title="Immediately stop motor movement and de-energize coils"
           >
             <ShieldAlert className="w-4 h-4 fill-current" />
@@ -271,27 +289,41 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
             <span className="text-[9px] text-slate-400">Piecewise Linear</span>
           </div>
 
-          {/* Node 4: Target Angle */}
+          {/* Node 4: Check Cap State */}
+          <div
+            className={`p-2.5 rounded-lg space-y-1 border ${
+              isAutomationEnabled
+                ? 'bg-cyan-950/70 border-cyan-500/80'
+                : 'bg-slate-900/80 border-slate-700'
+            }`}
+          >
+            <span className="text-[10px] text-slate-500 block uppercase font-bold">4. Cap State</span>
+            <span
+              className={`font-bold text-xs truncate block ${
+                isAutomationEnabled ? 'text-cyan-300' : 'text-slate-400'
+              }`}
+            >
+              {capState === 'CLOSED' ? 'CLOSED (ACTIVE)' : 'OPEN (SKIPPED)'}
+            </span>
+            <span className="text-[9px] text-slate-400">
+              {isAutomationEnabled ? 'Loop Enabled' : 'Auto Disabled'}
+            </span>
+          </div>
+
+          {/* Node 5: Target Angle from Profile */}
           <div className="bg-[#070d1a] border border-cyan-900/60 p-2.5 rounded-lg space-y-1">
-            <span className="text-[10px] text-slate-500 block uppercase font-bold">4. Profile Target</span>
+            <span className="text-[10px] text-slate-500 block uppercase font-bold">5. Profile Target</span>
             <span className="text-sky-300 font-bold text-xs truncate block">
               {formatDegrees(targetMotorPosition)}
             </span>
-            <span className="text-[9px] text-slate-400">User Profiles</span>
-          </div>
-
-          {/* Node 5: Commanded Angle */}
-          <div className="bg-[#070d1a] border border-cyan-900/60 p-2.5 rounded-lg space-y-1">
-            <span className="text-[10px] text-slate-500 block uppercase font-bold">5. Current Pos</span>
-            <span className="text-white font-bold text-xs truncate block">
-              {formatDegrees(currentMotorPosition)}
+            <span className="text-[9px] text-slate-400 truncate block">
+              {selectedProfileName || 'Saved Profile'}
             </span>
-            <span className="text-[9px] text-slate-400">Commanded Ref</span>
           </div>
 
           {/* Node 6: Delta Differential */}
           <div className="bg-[#070d1a] border border-cyan-900/60 p-2.5 rounded-lg space-y-1">
-            <span className="text-[10px] text-slate-500 block uppercase font-bold">6. Adjustment Δ</span>
+            <span className="text-[10px] text-slate-500 block uppercase font-bold">6. Movement Δ</span>
             <span
               className={`font-bold text-xs truncate block ${
                 Math.abs(requiredAdjustment) < angleDeadband
@@ -302,7 +334,7 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
               {requiredAdjustment > 0 ? `+${requiredAdjustment}` : requiredAdjustment}°
             </span>
             <span className="text-[9px] text-slate-400">
-              {Math.abs(requiredAdjustment) < angleDeadband ? 'Deadband ≤2°' : 'Out of Deadband'}
+              {Math.abs(requiredAdjustment) < angleDeadband ? 'Deadband ≤2°' : 'Required Move'}
             </span>
           </div>
 
@@ -316,7 +348,7 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
                 : 'bg-[#070d1a] border-slate-800 text-slate-400'
             }`}
           >
-            <span className="text-[10px] text-slate-500 block uppercase font-bold">7. Actuation</span>
+            <span className="text-[10px] text-slate-500 block uppercase font-bold">7. Existing Exec</span>
             <span className="font-bold text-xs truncate block flex items-center justify-center space-x-1">
               {motorDirection === 'CW' && <RotateCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />}
               {motorDirection === 'CCW' && <RotateCcw className="w-3.5 h-3.5 animate-spin text-sky-400" />}

@@ -12,6 +12,17 @@ export type StabilityStatus = 'STABLE' | 'UNSTABLE' | 'WAITING FOR READINGS';
 
 export type OperatingMode = 'MANUAL' | 'AUTOMATIC';
 
+export type CapState = 'OPEN' | 'CLOSED';
+
+export type AutomaticSystemState =
+  | 'CAP OPEN — AUTOMATION DISABLED'
+  | 'CAP CLOSED — AUTOMATION ACTIVE'
+  | 'MONITORING LIQUID LEVEL'
+  | 'LIQUID LEVEL CHANGED'
+  | 'AUTOMATIC MOTOR ADJUSTING'
+  | 'MOTOR STABLE'
+  | 'SENSOR ERROR';
+
 export type AutomationStatus = 'IDLE' | 'MONITORING' | 'ADJUSTING' | 'STABLE' | 'UNSTABLE' | 'ERROR';
 
 export type MotorDirection = 'CW' | 'CCW';
@@ -99,6 +110,9 @@ export interface AutomationEvent {
 }
 
 export interface AutomationFeedbackState {
+  capState: CapState;
+  isAutomationEnabled: boolean;
+  systemState: AutomaticSystemState;
   mode: OperatingMode;
   status: AutomationStatus;
   liveRaw: number | null;
@@ -106,8 +120,10 @@ export interface AutomationFeedbackState {
   calculatedVolumeMl: number | null;
   currentMotorPosition: number;
   targetMotorPosition: number;
+  lastCommandedTargetAngle: number | null;
   requiredAdjustment: number;
   motorDirection: MotorDirection | 'IDLE';
+  selectedProfileName: string | null;
   lastAdjustmentTime: number | null;
   lastAdjustmentDetails: string | null;
   angleDeadband: number;

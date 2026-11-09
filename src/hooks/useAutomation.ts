@@ -4,7 +4,9 @@ import {
   AutomationFeedbackState,
   AutomationStatus,
   AutomaticCapState,
+  AutomaticSystemState,
   CalibrationPoint,
+  CapState,
   ConnectionState,
   InterpolationResult,
   LoadCellStats,
@@ -14,7 +16,7 @@ import {
   RawReading,
 } from '../types';
 import { AutomationService, AutoCloseProgress } from '../services/automationService';
-import { calculateTargetMotorAngle } from '../services/motorService';
+import { interpolateMotorAction } from '../services/motorService';
 import { StorageService } from '../services/storageService';
 import { serialService, SerialEvent } from '../services/serialService';
 
@@ -27,17 +29,20 @@ export function useAutomation(
   connectionState: ConnectionState,
   onRotate?: (action: 'OPEN' | 'CLOSE', degrees: number, direction: MotorDirection) => Promise<void>
 ) {
-  // Mode selection (persisted)
-  const [mode, setMode] = useState<OperatingMode>(() => {
-    try {
-      const saved = localStorage.getItem('smart_tank_operating_mode');
-      return (saved === 'AUTOMATIC' || saved === 'MANUAL') ? saved : 'MANUAL';
-    } catch {
-      return 'MANUAL';
-    }
+  // 1. Cap State (OPEN or CLOSED) - Controls automatic mode
+  const [capState, setCapState] = useState<CapState>(() => StorageService.loadCapState());
+
+  // 2. High-level System State (Exact Requirements: 7 States)
+  const [systemState, setSystemState] = useState<AutomaticSystemState>(() => {
+    return capState === 'CLOSED'
+      ? 'CAP CLOSED — AUTOMATION ACTIVE'
+      : 'CAP OPEN — AUTOMATION DISABLED';
   });
 
-  // Position tracking (in degrees, starts at 0° or loaded from storage)
+  // Mode selection (derived from capState: CLOSED = AUTOMATIC, OPEN = MANUAL)
+  const [mode, setMode] = useState<OperatingMode>(() => (capState === 'CLOSED' ? 'AUTOMATIC' : 'MANUAL'));
+
+  // Commanded motor position tracking
   const [currentMotorPosition, setCurrentMotorPosition] = useState<number>(() => {
     return StorageService.loadMotorPosition();
   });
@@ -45,7 +50,7 @@ export function useAutomation(
   const [targetMotorPosition, setTargetMotorPosition] = useState<number>(0);
   const [requiredAdjustment, setRequiredAdjustment] = useState<number>(0);
   const [motorDirection, setMotorDirection] = useState<MotorDirection | 'IDLE'>('IDLE');
-  const [status, setStatus] = useState<AutomationStatus>('IDLE');
+  const [selectedProfileName, setSelectedProfileName] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [lastAdjustmentTime, setLastAdjustmentTime] = useState<number | null>(null);
@@ -62,7 +67,7 @@ export function useAutomation(
     return StorageService.loadAutomationHistory();
   });
 
-  // Legacy progress interface for backward compatibility
+  // Progress interface for backward compatibility
   const [progress, setProgress] = useState<AutoCloseProgress>({
     stage: 'IDLE',
     measuredVolumeMl: null,
@@ -71,7 +76,7 @@ export function useAutomation(
     errorMessage: null,
   });
 
-  // Dedicated Automatic Cap Control State (Display metrics)
+  // Dedicated Cap Control State
   const [capControlState, setCapControlState] = useState<AutomaticCapState>({
     lastAction: null,
     stage: 'IDLE',
@@ -86,20 +91,24 @@ export function useAutomation(
     errorMessage: null,
   });
 
-  // Synchronous refs for feedback control cycle to avoid closure staleness
+  // Synchronous refs to avoid stale closures in event and feedback loops
+  const lastCommandedTargetAngleRef = useRef<number | null>(null);
   const lastAdjustmentTimeRef = useRef<number>(0);
   const isExecutingAdjustmentRef = useRef<boolean>(false);
   const currentPosRef = useRef<number>(currentMotorPosition);
   currentPosRef.current = currentMotorPosition;
 
-  // Persist mode changes
+  // Sync mode with capState
   useEffect(() => {
+    const newMode: OperatingMode = capState === 'CLOSED' ? 'AUTOMATIC' : 'MANUAL';
+    setMode(newMode);
     try {
-      localStorage.setItem('smart_tank_operating_mode', mode);
+      localStorage.setItem('smart_tank_operating_mode', newMode);
+      StorageService.saveCapState(capState);
     } catch (e) {
-      console.warn('Failed to save operating mode:', e);
+      console.warn('Failed to persist cap state:', e);
     }
-  }, [mode]);
+  }, [capState]);
 
   // Persist motor position
   useEffect(() => {
@@ -135,177 +144,314 @@ export function useAutomation(
       } else if (event.type === 'STATE_CHANGED' && event.state !== 'CONNECTED') {
         setIsMotorMoving(false);
         isExecutingAdjustmentRef.current = false;
-        if (mode === 'AUTOMATIC') {
-          setStatus('IDLE');
-        }
+        setSystemState('SENSOR ERROR');
       }
     });
 
     return unsubscribe;
-  }, [mode]);
+  }, []);
 
   /**
    * Continuous Feedback Control Loop:
-   * LOAD CELL -> RAW READING -> FILTERING -> ML CALCULATION -> MOTOR PROFILE LOOKUP -> TARGET POSITION -> MOTOR ADJUSTMENT -> REPEAT
+   * 
+   * HX711 RAW READING
+   *         ↓
+   * FILTER RAW READING
+   *         ↓
+   * CALCULATE CURRENT ML
+   *         ↓
+   * CHECK CAP STATE
+   *         ↓
+   * IS CAP CLOSED?
+   *    NO  → SKIP ALL MOTOR COMMANDS (CAP OPEN — AUTOMATION DISABLED)
+   *    YES ↓
+   * SELECT SAVED MOTOR PROFILE
+   *         ↓
+   * CALCULATE REQUIRED MOTOR MOVEMENT (Δ = newTarget - prevTarget)
+   *         ↓
+   * EXECUTE EXISTING MOTOR CONTROL FUNCTION (Move only difference)
+   *         ↓
+   * CONTINUE MONITORING
    */
   useEffect(() => {
-    // 1. Guard: Automation loop only runs when mode is AUTOMATIC and connected
-    if (mode !== 'AUTOMATIC') {
-      setStatus('IDLE');
+    // 1. Hardware connection & sensor health check
+    if (connectionState !== 'CONNECTED' || stats.currentRaw === null) {
+      if (connectionState !== 'CONNECTED') {
+        setSystemState('SENSOR ERROR');
+        setErrorMessage('ESP32 not connected. USB Serial connection required.');
+      }
+      return;
+    }
+
+    // 2. CHECK CAP STATE:
+    // If Cap is OPEN: IMMEDIATELY DISABLE automatic motor adjustments.
+    // Continue monitoring load-cell readings for display, but NEVER automatically rotate motor!
+    if (capState === 'OPEN') {
+      setSystemState('CAP OPEN — AUTOMATION DISABLED');
       setMotorDirection('IDLE');
+      setRequiredAdjustment(0);
       setErrorMessage(null);
       return;
     }
 
-    if (connectionState !== 'CONNECTED') {
-      setStatus('IDLE');
-      setMotorDirection('IDLE');
-      setErrorMessage('ESP32 not connected. Connect serial cable to enable automation.');
-      return;
-    }
-
-    // 2. Prerequisites: confirmed calibration points and configured motor profiles
+    // 3. CAP IS CLOSED: Automatic motor control is ACTIVE!
     const confirmedPoints = calibrationPoints.filter((p) => p.status === 'CONFIRMED');
     if (confirmedPoints.length < 2) {
-      setStatus('ERROR');
-      setMotorDirection('IDLE');
-      setErrorMessage('Automatic mode requires at least 2 confirmed calibration points for volume interpolation.');
+      setSystemState('SENSOR ERROR');
+      setErrorMessage('Liquid volume uncalibrated. At least 2 calibration points required.');
       return;
     }
 
     if (!motorProfiles || motorProfiles.length === 0) {
-      setStatus('ERROR');
-      setMotorDirection('IDLE');
-      setErrorMessage('Automatic mode requires at least 1 configured motor profile.');
+      setSystemState('SENSOR ERROR');
+      setErrorMessage('No motor profiles configured. Configure profiles in Motor Configuration.');
       return;
     }
 
     setErrorMessage(null);
 
-    // 3. Liquid volume availability
+    // 4. Calculate Current Volume
     const volumeMl = volumeInterpolation.volumeMl;
     if (volumeMl === null) {
-      setStatus('MONITORING');
-      setMotorDirection('IDLE');
+      setSystemState('MONITORING LIQUID LEVEL');
       return;
     }
 
-    // 4. Motor Profile Lookup & Interpolation
-    const targetResult = calculateTargetMotorAngle(
-      volumeMl,
-      motorProfiles,
-      config.minMotorAngle,
-      config.maxMotorAngle
-    );
-
-    if (!targetResult) {
-      setStatus('ERROR');
-      setErrorMessage('Failed to compute target angle from motor profiles.');
+    // 5. Select Saved Motor Profile for Current Volume
+    const profileResult = interpolateMotorAction('CLOSE', volumeMl, motorProfiles);
+    if (!profileResult) {
+      setSystemState('SENSOR ERROR');
       return;
     }
 
-    const targetAngle = Math.round(targetResult.targetAngle * 10) / 10;
+    const targetAngle = profileResult.degrees;
+    const profileDirection = profileResult.direction;
+    setSelectedProfileName(profileResult.profileDescription);
     setTargetMotorPosition(targetAngle);
 
-    // 5. Compare new target with commanded motor position
-    const currentPos = currentPosRef.current;
-    const diff = Math.round((targetAngle - currentPos) * 10) / 10;
+    // If initial commanded target is not set, initialize it
+    if (lastCommandedTargetAngleRef.current === null) {
+      lastCommandedTargetAngleRef.current = targetAngle;
+      setSystemState('MONITORING LIQUID LEVEL');
+      return;
+    }
+
+    // 6. Calculate Required Movement: Difference between new target and last successfully commanded target
+    const prevTarget = lastCommandedTargetAngleRef.current;
+    const diff = Math.round((targetAngle - prevTarget) * 10) / 10;
     setRequiredAdjustment(diff);
 
-    // 6. Anti-Oscillation & Deadband Check
+    // 7. Check Deadband: Ignore insignificant load-cell fluctuations
     if (Math.abs(diff) < config.angleDeadband) {
       setMotorDirection('IDLE');
-      setStatus('STABLE');
+      if (isMotorMoving || isExecutingAdjustmentRef.current) {
+        setSystemState('AUTOMATIC MOTOR ADJUSTING');
+      } else {
+        setSystemState('MOTOR STABLE');
+      }
       return;
     }
 
-    const proposedDirection: MotorDirection = diff > 0 ? 'CW' : 'CCW';
+    // 8. Difference exceeds deadband: Liquid level changed!
+    // Direction: if diff > 0, move in configured profileDirection; if diff < 0, move opposite
+    const proposedDirection: MotorDirection =
+      diff > 0 ? profileDirection : profileDirection === 'CW' ? 'CCW' : 'CW';
     setMotorDirection(proposedDirection);
 
-    // 7. Reading Stability Check
-    // "Do not move the motor using unstable readings."
-    if (stats.stability === 'UNSTABLE') {
-      setStatus('UNSTABLE');
-      return;
-    }
-
-    // 8. Busy Guard
-    // "Do not repeatedly send motor commands while a previous movement is still being processed."
+    // If motor is currently moving, wait for completion
     if (isMotorMoving || isExecutingAdjustmentRef.current || serialService.isMotorRunning()) {
-      setStatus('ADJUSTING');
+      setSystemState('AUTOMATIC MOTOR ADJUSTING');
       return;
     }
 
-    // 9. Rate Limiting / Settling Period
-    // "Limit how frequently target adjustments can be issued."
+    // Stability gate: do not move motor on unstable readings
+    if (stats.stability === 'UNSTABLE') {
+      setSystemState('LIQUID LEVEL CHANGED');
+      return;
+    }
+
+    // Rate limiting: enforce settling interval between motor adjustments
     const now = Date.now();
     if (now - lastAdjustmentTimeRef.current < config.minAdjustmentInterval) {
-      setStatus('MONITORING');
+      setSystemState('LIQUID LEVEL CHANGED');
       return;
     }
 
-    // 10. Execute Motor Adjustment for the required difference only
+    // 9. Execute Required Difference Only using existing motor control function
     const degToMove = Math.round(Math.abs(diff));
     if (degToMove < 1) {
-      setStatus('STABLE');
+      setSystemState('MOTOR STABLE');
       setMotorDirection('IDLE');
       return;
     }
 
-    // Set lock
     isExecutingAdjustmentRef.current = true;
     lastAdjustmentTimeRef.current = now;
     setLastAdjustmentTime(now);
-    setStatus('ADJUSTING');
+    setSystemState('AUTOMATIC MOTOR ADJUSTING');
 
-    const details = `Auto adjust: ${degToMove}° ${proposedDirection} to reach target ${targetAngle}° (${Math.round(volumeMl)} ml)`;
+    const details = `Auto adjust: moved ${degToMove}° ${proposedDirection} (target ${prevTarget}° -> ${targetAngle}°, vol ${volumeMl.toFixed(1)} ml)`;
     setLastAdjustmentDetails(details);
 
     (async () => {
       try {
-        const event = await AutomationService.executeAdjustment(
-          degToMove,
-          proposedDirection,
-          volumeMl,
-          targetAngle
-        );
-        addEventToHistory(event);
+        if (onRotate) {
+          await onRotate('CLOSE', degToMove, proposedDirection);
+        } else {
+          await serialService.sendCommand(`CLOSE,${degToMove},${proposedDirection}`);
+        }
 
-        // Update local position tracking
-        const newPos = proposedDirection === 'CW' ? currentPos + degToMove : currentPos - degToMove;
-        const clampedPos = Math.round(newPos * 10) / 10;
-        setCurrentMotorPosition(clampedPos);
-        currentPosRef.current = clampedPos;
-        StorageService.saveMotorPosition(clampedPos);
+        // Wait for motor completion signal from ESP32
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(() => {
+            sub();
+            resolve();
+          }, Math.max(6000, degToMove * 25));
 
-        setStatus('STABLE');
+          const sub = serialService.subscribe((ev) => {
+            if (ev.type === 'MOTOR_COMPLETED' || ev.type === 'ERROR') {
+              clearTimeout(timeout);
+              sub();
+              resolve();
+            }
+          });
+        });
+
+        // Update successfully commanded target position
+        lastCommandedTargetAngleRef.current = targetAngle;
+        currentPosRef.current = targetAngle;
+        setCurrentMotorPosition(targetAngle);
+        StorageService.saveMotorPosition(targetAngle);
+
+        setSystemState('MOTOR STABLE');
         setMotorDirection('IDLE');
+
+        addEventToHistory({
+          id: Math.random().toString(36).substring(2, 9),
+          timestamp: Date.now(),
+          type: 'AUTO_ADJUST',
+          mode: 'AUTOMATIC',
+          volumeMl,
+          degrees: degToMove,
+          direction: proposedDirection,
+          status: 'SUCCESS',
+          details,
+        });
       } catch (err: any) {
-        setStatus('ERROR');
-        setErrorMessage(`Adjustment failed: ${err.message}`);
+        setSystemState('SENSOR ERROR');
+        setErrorMessage(`Automatic adjustment error: ${err.message}`);
       } finally {
         isExecutingAdjustmentRef.current = false;
       }
     })();
   }, [
-    mode,
+    capState,
     connectionState,
     volumeInterpolation.volumeMl,
     stats.stability,
+    stats.currentRaw,
     calibrationPoints,
     motorProfiles,
     isMotorMoving,
     config,
+    onRotate,
     addEventToHistory,
   ]);
 
   /**
-   * Emergency Motor Stop: Immediately cuts motor driver and switches to manual mode
+   * CAP CLOSE ACTION:
+   * 1. Execute configured CLOSE motor operation.
+   * 2. Set cap state to CLOSED.
+   * 3. Enable continuous automatic motor control.
+   * 4. Continue monitoring & adjusting on volume changes.
+   */
+  const triggerCapClose = useCallback(async () => {
+    if (isMotorMoving || isExecutingAdjustmentRef.current) return;
+    isExecutingAdjustmentRef.current = true;
+
+    try {
+      const event = await AutomationService.executeAutomaticCap(
+        'CLOSE',
+        readings,
+        calibrationPoints,
+        motorProfiles,
+        (partial) => {
+          setCapControlState((prev) => ({ ...prev, ...partial }));
+        },
+        onRotate
+      );
+      addEventToHistory(event);
+
+      // Set cap state to CLOSED and enable continuous automatic mode
+      setCapState('CLOSED');
+      StorageService.saveCapState('CLOSED');
+      setMode('AUTOMATIC');
+
+      if (event.degrees !== null) {
+        lastCommandedTargetAngleRef.current = event.degrees;
+        currentPosRef.current = event.degrees;
+        setCurrentMotorPosition(event.degrees);
+        StorageService.saveMotorPosition(event.degrees);
+      }
+
+      setSystemState('CAP CLOSED — AUTOMATION ACTIVE');
+    } catch (err: any) {
+      console.error('Cap Close execution error:', err);
+    } finally {
+      isExecutingAdjustmentRef.current = false;
+    }
+  }, [isMotorMoving, readings, calibrationPoints, motorProfiles, onRotate, addEventToHistory]);
+
+  /**
+   * CAP OPEN ACTION:
+   * 1. Immediately disable automatic motor adjustments.
+   * 2. Execute configured OPEN motor operation.
+   * 3. Set cap state to OPEN.
+   * 4. Continue monitoring load-cell readings for dashboard display.
+   * 5. NEVER automatically rotate motor while cap is open.
+   */
+  const triggerCapOpen = useCallback(async () => {
+    if (isMotorMoving || isExecutingAdjustmentRef.current) return;
+
+    // Immediately disable automatic motor adjustments
+    setCapState('OPEN');
+    StorageService.saveCapState('OPEN');
+    setMode('MANUAL');
+    lastCommandedTargetAngleRef.current = null;
+    setSystemState('CAP OPEN — AUTOMATION DISABLED');
+    setMotorDirection('IDLE');
+    setRequiredAdjustment(0);
+
+    isExecutingAdjustmentRef.current = true;
+
+    try {
+      const event = await AutomationService.executeAutomaticCap(
+        'OPEN',
+        readings,
+        calibrationPoints,
+        motorProfiles,
+        (partial) => {
+          setCapControlState((prev) => ({ ...prev, ...partial }));
+        },
+        onRotate
+      );
+      addEventToHistory(event);
+    } catch (err: any) {
+      console.error('Cap Open execution error:', err);
+    } finally {
+      isExecutingAdjustmentRef.current = false;
+    }
+  }, [isMotorMoving, readings, calibrationPoints, motorProfiles, onRotate, addEventToHistory]);
+
+  /**
+   * Emergency Motor Stop: Immediately cuts motor driver and disables automation
    */
   const triggerEmergencyStop = useCallback(async () => {
     isExecutingAdjustmentRef.current = false;
+    setCapState('OPEN');
+    StorageService.saveCapState('OPEN');
     setMode('MANUAL');
-    setStatus('ERROR');
+    setSystemState('CAP OPEN — AUTOMATION DISABLED');
     setMotorDirection('IDLE');
 
     try {
@@ -318,11 +464,12 @@ export function useAutomation(
   }, [addEventToHistory]);
 
   /**
-   * Zero / Calibrate motor reference angle (e.g. at tank empty baseline)
+   * Zero / Calibrate motor reference angle
    */
   const zeroMotorPosition = useCallback(async () => {
     setCurrentMotorPosition(0);
     currentPosRef.current = 0;
+    lastCommandedTargetAngleRef.current = 0;
     StorageService.saveMotorPosition(0);
 
     try {
@@ -345,70 +492,6 @@ export function useAutomation(
     }
   }, [connectionState, mode, addEventToHistory]);
 
-  /**
-   * Automatic Cap Open Workflow:
-   * 1. Capture fresh stable reading.
-   * 2. Calculate volume ml using saved calibration points.
-   * 3. Identify matching OPEN profile (interpolating if between configured volume points).
-   * 4. Retrieve configured open rotation & direction.
-   * 5. Execute existing manual motor function with those exact settings.
-   * 6. Display selected profile and movement status.
-   */
-  const triggerCapOpen = useCallback(async () => {
-    if (isMotorMoving || isExecutingAdjustmentRef.current) return;
-    isExecutingAdjustmentRef.current = true;
-
-    try {
-      const event = await AutomationService.executeAutomaticCap(
-        'OPEN',
-        readings,
-        calibrationPoints,
-        motorProfiles,
-        (partial) => {
-          setCapControlState((prev) => ({ ...prev, ...partial }));
-        },
-        onRotate
-      );
-      addEventToHistory(event);
-    } catch (err: any) {
-      console.error('Automatic Cap Open execution error:', err);
-    } finally {
-      isExecutingAdjustmentRef.current = false;
-    }
-  }, [isMotorMoving, readings, calibrationPoints, motorProfiles, onRotate, addEventToHistory]);
-
-  /**
-   * Automatic Cap Close Workflow:
-   * 1. Capture fresh stable reading.
-   * 2. Calculate volume ml using saved calibration points.
-   * 3. Identify matching CLOSE profile (interpolating if between configured volume points).
-   * 4. Retrieve configured close rotation & direction.
-   * 5. Execute existing manual motor function with those exact settings.
-   * 6. Display selected profile and movement status.
-   */
-  const triggerCapClose = useCallback(async () => {
-    if (isMotorMoving || isExecutingAdjustmentRef.current) return;
-    isExecutingAdjustmentRef.current = true;
-
-    try {
-      const event = await AutomationService.executeAutomaticCap(
-        'CLOSE',
-        readings,
-        calibrationPoints,
-        motorProfiles,
-        (partial) => {
-          setCapControlState((prev) => ({ ...prev, ...partial }));
-        },
-        onRotate
-      );
-      addEventToHistory(event);
-    } catch (err: any) {
-      console.error('Automatic Cap Close execution error:', err);
-    } finally {
-      isExecutingAdjustmentRef.current = false;
-    }
-  }, [isMotorMoving, readings, calibrationPoints, motorProfiles, onRotate, addEventToHistory]);
-
   const clearHistory = useCallback(() => {
     setHistory([]);
   }, []);
@@ -419,15 +502,27 @@ export function useAutomation(
 
   // Aggregated state object for UI
   const feedbackState: AutomationFeedbackState = {
-    mode,
-    status,
+    capState,
+    isAutomationEnabled: capState === 'CLOSED',
+    systemState,
+    mode: (capState === 'CLOSED' ? 'AUTOMATIC' : 'MANUAL') as OperatingMode,
+    status:
+      systemState === 'AUTOMATIC MOTOR ADJUSTING'
+        ? 'ADJUSTING'
+        : systemState === 'MOTOR STABLE'
+        ? 'STABLE'
+        : systemState === 'SENSOR ERROR'
+        ? 'ERROR'
+        : 'MONITORING',
     liveRaw: stats.currentRaw,
     filteredRaw: stats.filteredRaw !== null ? stats.filteredRaw : stats.average,
     calculatedVolumeMl: volumeInterpolation.volumeMl,
     currentMotorPosition,
     targetMotorPosition,
+    lastCommandedTargetAngle: lastCommandedTargetAngleRef.current,
     requiredAdjustment,
     motorDirection,
+    selectedProfileName,
     lastAdjustmentTime,
     lastAdjustmentDetails,
     angleDeadband: config.angleDeadband,
@@ -450,17 +545,22 @@ export function useAutomation(
   };
 
   return {
-    mode,
+    capState,
+    setCapState,
+    systemState,
+    isAutomationEnabled: capState === 'CLOSED',
+    mode: (capState === 'CLOSED' ? 'AUTOMATIC' : 'MANUAL') as OperatingMode,
     setMode,
-    status,
+    status: feedbackState.status,
     currentMotorPosition,
     targetMotorPosition,
     requiredAdjustment,
     motorDirection,
+    selectedProfileName,
     lastAdjustmentTime,
     lastAdjustmentDetails,
     isMotorMoving,
-    isRunning: mode === 'AUTOMATIC' || isMotorMoving,
+    isRunning: isMotorMoving,
     config,
     updateConfig,
     history,
