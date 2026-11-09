@@ -229,6 +229,9 @@ export function App() {
     isGatewayOnline,
     isThisDeviceGateway,
     gatewayMessage,
+    gatewayAuthStatus,
+    gatewayKey,
+    setGatewayKey,
     remoteSnapshot,
     isAuthenticated,
     serverUrl,
@@ -670,6 +673,9 @@ export function App() {
         isGatewayOnline={isGatewayOnline}
         isThisDeviceGateway={isThisDeviceGateway}
         syncStatus={syncStatus}
+        gatewayKey={gatewayKey}
+        onUpdateGatewayKey={setGatewayKey}
+        gatewayAuthStatus={gatewayAuthStatus}
       />
     </div>
   );

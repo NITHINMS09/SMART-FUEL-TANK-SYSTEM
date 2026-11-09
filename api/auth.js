@@ -1,7 +1,8 @@
 // Vercel Serverless Function: /api/auth
 import crypto from 'crypto';
 
-const DEFAULT_AUTH_PIN = process.env.REMOTE_AUTH_PIN || '124580';
+const DEFAULT_AUTH_PIN = (process.env.REMOTE_AUTH_PIN || '124580').trim();
+const AUTH_TOKEN_SECRET = (process.env.AUTH_TOKEN_SECRET || process.env.REMOTE_AUTH_PIN || 'smart_tank_auth_secret_2026').trim();
 
 async function parseBody(req) {
   if (req.body && typeof req.body === 'object') {
@@ -29,6 +30,17 @@ async function parseBody(req) {
   });
 }
 
+function generateAuthToken() {
+  const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+  const randomPart = crypto.randomBytes(8).toString('hex');
+  const payload = `${expiresAt}.${randomPart}`;
+  const sig = crypto.createHmac('sha256', AUTH_TOKEN_SECRET).update(payload).digest('hex');
+  return {
+    token: `tok_${payload}.${sig}`,
+    expiresAt,
+  };
+}
+
 export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -53,10 +65,11 @@ export default async function handler(req, res) {
     const pin = body && typeof body.pin === 'string' ? body.pin.trim() : (body && body.pin !== undefined ? String(body.pin).trim() : '');
 
     if (pin && pin === DEFAULT_AUTH_PIN) {
-      const token = `tok_${crypto.randomBytes(16).toString('hex')}`;
+      const { token, expiresAt } = generateAuthToken();
       return res.status(200).json({
         success: true,
         token,
+        expiresAt,
         message: 'Remote control authorization granted',
       });
     }

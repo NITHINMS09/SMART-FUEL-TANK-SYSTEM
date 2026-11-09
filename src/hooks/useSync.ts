@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { SyncService, CommandResponse } from '../services/syncService';
+import { SyncService, CommandResponse, GatewayAuthResult } from '../services/syncService';
 import {
   ConnectionState,
   SyncConnectionStatus,
@@ -27,9 +27,11 @@ export function useSync({
   const [gatewayMessage, setGatewayMessage] = useState<string>(
     'ESP32 GATEWAY OFFLINE – REMOTE CONTROL UNAVAILABLE'
   );
+  const [gatewayAuthStatus, setGatewayAuthStatus] = useState<GatewayAuthResult | null>(null);
   const [remoteSnapshot, setRemoteSnapshot] = useState<TelemetrySnapshot | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(SyncService.isAuthenticated());
   const [serverUrl, setServerUrlState] = useState<string>(SyncService.getServerUrl());
+  const [gatewayKey, setGatewayKeyState] = useState<string>(SyncService.getGatewayKey());
 
   const isThisDeviceGateway = localConnectionState === 'CONNECTED';
   const lastBroadcastTimeRef = useRef<number>(0);
@@ -47,6 +49,13 @@ export function useSync({
       setGatewayMessage(msg || (online ? 'Gateway Online' : 'ESP32 GATEWAY OFFLINE – REMOTE CONTROL UNAVAILABLE'));
     });
 
+    const unsubGatewayAuth = SyncService.onGatewayAuthStatus((authResult) => {
+      setGatewayAuthStatus(authResult);
+      if (!authResult.success && authResult.error) {
+        setGatewayMessage(authResult.error);
+      }
+    });
+
     const unsubTelemetry = SyncService.onTelemetryUpdate((snapshot) => {
       setRemoteSnapshot(snapshot);
       if (snapshot.gatewayOnline !== undefined) {
@@ -61,6 +70,7 @@ export function useSync({
     return () => {
       unsubStatus();
       unsubGatewayStatus();
+      unsubGatewayAuth();
       unsubTelemetry();
       unsubAuth();
     };
@@ -110,7 +120,7 @@ export function useSync({
   const broadcastCurrentState = useCallback(() => {
     if (!isThisDeviceGateway || !localSnapshotProvider) return;
     const now = Date.now();
-    // Throttle to max 10 updates per second (100ms) to ensure smooth networking
+    // Throttle to max 10 updates per second (80ms) to ensure smooth real-time networking
     if (now - lastBroadcastTimeRef.current < 80) return;
     lastBroadcastTimeRef.current = now;
 
@@ -137,6 +147,11 @@ export function useSync({
     setServerUrlState(newUrl);
   }, []);
 
+  const setGatewayKey = useCallback((newKey: string) => {
+    SyncService.setGatewayKey(newKey);
+    setGatewayKeyState(newKey);
+  }, []);
+
   const checkServerHealth = useCallback(async (customUrl?: string) => {
     return await SyncService.checkServerHealth(customUrl);
   }, []);
@@ -159,10 +174,13 @@ export function useSync({
     isGatewayOnline: isThisDeviceGateway || isGatewayOnline,
     isThisDeviceGateway,
     gatewayMessage,
+    gatewayAuthStatus,
     remoteSnapshot,
     isAuthenticated,
     serverUrl,
     apiUrl: SyncService.getApiUrl(),
+    gatewayKey,
+    setGatewayKey,
     setServerUrl,
     checkServerHealth,
     authenticate,
@@ -173,4 +191,3 @@ export function useSync({
     triggerRemoteEmergencyStop,
   };
 }
-

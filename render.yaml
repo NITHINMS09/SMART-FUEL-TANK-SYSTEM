@@ -10,3 +10,5 @@ services:
         value: 22.x
       - key: REMOTE_AUTH_PIN
         value: "124580"
+      - key: GATEWAY_SECRET
+        value: "smart_tank_gateway_secret_2026"

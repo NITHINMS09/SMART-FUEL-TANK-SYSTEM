@@ -17,3 +17,4 @@ export default function handler(req, res) {
     timestamp: Date.now(),
   });
 }
+

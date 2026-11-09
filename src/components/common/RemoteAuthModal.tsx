@@ -13,7 +13,9 @@ import {
   Activity,
   Globe,
   Wifi,
+  Key,
 } from 'lucide-react';
+import { GatewayAuthResult } from '../../services/syncService';
 
 interface RemoteAuthModalProps {
   isOpen: boolean;
@@ -28,6 +30,9 @@ interface RemoteAuthModalProps {
   isGatewayOnline: boolean;
   isThisDeviceGateway: boolean;
   syncStatus?: string;
+  gatewayKey?: string;
+  onUpdateGatewayKey?: (key: string) => void;
+  gatewayAuthStatus?: GatewayAuthResult | null;
 }
 
 export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
@@ -43,10 +48,15 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
   isGatewayOnline,
   isThisDeviceGateway,
   syncStatus = 'CONNECTED',
+  gatewayKey = 'smart_tank_gateway_secret_2026',
+  onUpdateGatewayKey,
+  gatewayAuthStatus,
 }) => {
   const [pin, setPin] = useState('');
   const [customUrl, setCustomUrl] = useState(serverUrl);
+  const [customGatewayKey, setCustomGatewayKey] = useState(gatewayKey);
   const [error, setError] = useState<string | null>(null);
+  const [keySavedFeedback, setKeySavedFeedback] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [healthStatus, setHealthStatus] = useState<{
@@ -76,10 +86,23 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
     }
   };
 
-  const handleUrlSave = (e: React.FormEvent) => {
+  const handleConfigSave = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateServerUrl(customUrl.trim());
+    if (onUpdateGatewayKey && customGatewayKey.trim()) {
+      onUpdateGatewayKey(customGatewayKey.trim());
+      setKeySavedFeedback(true);
+      setTimeout(() => setKeySavedFeedback(false), 2500);
+    }
     setShowConfig(false);
+  };
+
+  const handleSaveGatewayKeyOnly = () => {
+    if (onUpdateGatewayKey && customGatewayKey.trim()) {
+      onUpdateGatewayKey(customGatewayKey.trim());
+      setKeySavedFeedback(true);
+      setTimeout(() => setKeySavedFeedback(false), 2500);
+    }
   };
 
   const handleTestHealth = async () => {
@@ -158,6 +181,19 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
               <span>{isGatewayOnline ? 'ONLINE & LINKED' : 'OFFLINE'}</span>
             </span>
           </div>
+
+          {isThisDeviceGateway && gatewayAuthStatus && (
+            <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[10px]">
+              <span className="text-slate-400">Gateway Key Status:</span>
+              <span
+                className={`font-bold ${
+                  gatewayAuthStatus.success ? 'text-emerald-400' : 'text-rose-400'
+                }`}
+              >
+                {gatewayAuthStatus.success ? 'AUTHENTICATED' : 'REJECTED: BAD KEY'}
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[11px]">
             <span className="text-slate-400">Relay Socket Link:</span>
@@ -244,7 +280,7 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
           </form>
         )}
 
-        {/* Sync Server Configuration Accordion */}
+        {/* Sync Server & Gateway Key Configuration Accordion */}
         <div className="pt-2 border-t border-slate-800/80 space-y-2">
           <div className="flex items-center justify-between">
             <button
@@ -289,7 +325,7 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
           )}
 
           {showConfig && (
-            <form onSubmit={handleUrlSave} className="space-y-3 bg-[#070c18] p-3 rounded-lg border border-slate-800">
+            <form onSubmit={handleConfigSave} className="space-y-3 bg-[#070c18] p-3 rounded-lg border border-slate-800">
               <div>
                 <label className="block text-slate-400 text-[10px] uppercase font-semibold mb-1">
                   WebSocket Relay URL
@@ -324,6 +360,37 @@ export const RemoteAuthModal: React.FC<RemoteAuthModalProps> = ({
                     <span className="truncate">Localhost (:4001)</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Gateway Secret Key Configuration */}
+              <div className="pt-2 border-t border-slate-800 space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-slate-400 text-[10px] uppercase font-semibold">
+                    Gateway Secret Key (Laptop A)
+                  </label>
+                  {keySavedFeedback && (
+                    <span className="text-[10px] text-emerald-400 font-bold">Saved!</span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="password"
+                    value={customGatewayKey}
+                    onChange={(e) => setCustomGatewayKey(e.target.value)}
+                    placeholder="Gateway Secret Key"
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-cyan-300 font-mono text-[11px] focus:border-cyan-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveGatewayKeyOnly}
+                    className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[10px] font-bold border border-slate-700 cursor-pointer"
+                  >
+                    Save Key
+                  </button>
+                </div>
+                <p className="text-[9px] text-slate-500">
+                  Required by Laptop A connected to the ESP32. Prevents unauthorized clients from declaring as gateway.
+                </p>
               </div>
 
               <button

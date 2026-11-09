@@ -4,10 +4,10 @@
  * ==============================================================================
  * Client-side real-time communication service leveraging native browser WebSockets
  * and HTTP fallbacks. Handles:
- *  - Automatic connection and exponential backoff reconnection
- *  - Authoritative Gateway telemetry publishing (Laptop A)
+ *  - Automatic connection, heartbeat ping, and exponential backoff reconnection
+ *  - Authoritative Gateway telemetry publishing with secret key authentication (Laptop A)
  *  - Remote telemetry consumption (Mobile B, Laptop C, etc.)
- *  - Authenticated command dispatching & acknowledgement tracking
+ *  - Authenticated command dispatching & physical hardware acknowledgement tracking
  *  - Robust multi-endpoint authentication with descriptive diagnostic feedback
  * ==============================================================================
  */
@@ -33,8 +33,15 @@ export interface HealthCheckResult {
   details?: any;
 }
 
+export interface GatewayAuthResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
 type TelemetryListener = (snapshot: TelemetrySnapshot) => void;
 type GatewayStatusListener = (online: boolean, message: string) => void;
+type GatewayAuthListener = (result: GatewayAuthResult) => void;
 type GatewayCommandListener = (cmd: { action: RemoteControlAction; requestId: string }) => void;
 type StatusChangeListener = (status: SyncConnectionStatus) => void;
 type AuthChangeListener = (isAuthenticated: boolean) => void;
@@ -47,9 +54,11 @@ class SyncServiceClass {
   private serverUrl: string = '';
   private apiUrl: string = '';
   private authToken: string | null = null;
+  private gatewayKey: string = '';
   private reconnectTimeout: any = null;
   private reconnectAttempt: number = 0;
   private isExplicitDisconnect: boolean = false;
+  private keepaliveTimer: any = null;
 
   // Pending remote command promises waiting for Gateway acknowledgement
   private pendingCommands = new Map<
@@ -64,6 +73,7 @@ class SyncServiceClass {
   // Event Listeners
   private telemetryListeners = new Set<TelemetryListener>();
   private gatewayStatusListeners = new Set<GatewayStatusListener>();
+  private gatewayAuthListeners = new Set<GatewayAuthListener>();
   private gatewayCommandListeners = new Set<GatewayCommandListener>();
   private statusChangeListeners = new Set<StatusChangeListener>();
   private authChangeListeners = new Set<AuthChangeListener>();
@@ -78,8 +88,14 @@ class SyncServiceClass {
       localStorage.setItem('smart_tank_device_id', this.deviceId);
     }
 
-    // Restore cached auth token if available
-    this.authToken = sessionStorage.getItem('smart_tank_auth_token');
+    // Restore cached auth token if available (sessionStorage or localStorage fallback)
+    this.authToken =
+      sessionStorage.getItem('smart_tank_auth_token') ||
+      localStorage.getItem('smart_tank_auth_token');
+
+    // Restore configured Gateway Key or default
+    const storedKey = localStorage.getItem('smart_tank_gateway_key');
+    this.gatewayKey = storedKey && storedKey.trim() ? storedKey.trim() : 'smart_tank_gateway_secret_2026';
 
     // Determine initial server & API URLs
     this.serverUrl = this.resolveInitialServerUrl();
@@ -147,6 +163,22 @@ class SyncServiceClass {
     return this.deviceId;
   }
 
+  public getGatewayKey(): string {
+    return this.gatewayKey;
+  }
+
+  public setGatewayKey(key: string): void {
+    const trimmed = key.trim();
+    if (!trimmed) return;
+    this.gatewayKey = trimmed;
+    localStorage.setItem('smart_tank_gateway_key', trimmed);
+
+    // If currently acting as Gateway, re-authenticate immediately with new key
+    if (this.role === 'GATEWAY' && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.registerAsGateway(trimmed);
+    }
+  }
+
   public isAuthenticated(): boolean {
     return !!this.authToken;
   }
@@ -204,14 +236,25 @@ class SyncServiceClass {
       this.ws.onopen = () => {
         this.reconnectAttempt = 0;
         this.setStatus('CONNECTED');
+        this.startKeepalive();
 
-        // Register role with server
-        this.send({
-          type: 'REGISTER_ROLE',
-          role: this.role,
-          deviceId: this.deviceId,
-          deviceName: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 30) : 'WebClient',
-        });
+        // Register role with server (including gateway credentials if this device is Gateway)
+        if (this.role === 'GATEWAY') {
+          this.send({
+            type: 'REGISTER_ROLE',
+            role: 'GATEWAY',
+            deviceId: this.deviceId,
+            gatewayKey: this.gatewayKey,
+            deviceName: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 30) : 'GatewayHost',
+          });
+        } else {
+          this.send({
+            type: 'REGISTER_ROLE',
+            role: 'CLIENT',
+            deviceId: this.deviceId,
+            deviceName: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 30) : 'WebClient',
+          });
+        }
       };
 
       this.ws.onmessage = (event) => {
@@ -229,6 +272,7 @@ class SyncServiceClass {
       };
 
       this.ws.onclose = () => {
+        this.stopKeepalive();
         this.ws = null;
         if (!this.isExplicitDisconnect) {
           this.setStatus('DISCONNECTED');
@@ -249,6 +293,7 @@ class SyncServiceClass {
    */
   public disconnect(): void {
     this.isExplicitDisconnect = true;
+    this.stopKeepalive();
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -261,15 +306,41 @@ class SyncServiceClass {
   }
 
   /**
+   * Start keepalive ping to maintain persistent WebSocket connection through proxies
+   */
+  private startKeepalive(): void {
+    this.stopKeepalive();
+    this.keepaliveTimer = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.send({ type: 'PING', timestamp: Date.now() });
+      }
+    }, 15000);
+  }
+
+  private stopKeepalive(): void {
+    if (this.keepaliveTimer) {
+      clearInterval(this.keepaliveTimer);
+      this.keepaliveTimer = null;
+    }
+  }
+
+  /**
    * Declare this browser as the authoritative Hardware Gateway (Laptop A connected to ESP32)
    */
-  public registerAsGateway(): void {
+  public registerAsGateway(key?: string): void {
+    if (key && key.trim()) {
+      this.gatewayKey = key.trim();
+      localStorage.setItem('smart_tank_gateway_key', this.gatewayKey);
+    }
     this.role = 'GATEWAY';
+
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.send({
         type: 'REGISTER_ROLE',
         role: 'GATEWAY',
         deviceId: this.deviceId,
+        gatewayKey: this.gatewayKey,
+        deviceName: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 30) : 'GatewayHost',
       });
     }
   }
@@ -284,6 +355,7 @@ class SyncServiceClass {
         type: 'REGISTER_ROLE',
         role: 'CLIENT',
         deviceId: this.deviceId,
+        deviceName: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 30) : 'WebClient',
       });
     }
   }
@@ -359,11 +431,15 @@ class SyncServiceClass {
     // -------------------------------------------------------------
     const primaryApiUrl = this.apiUrl.replace(/\/+$/, '');
     try {
-      const res = await this.fetchWithTimeout(`${primaryApiUrl}/api/auth`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: cleanPin }),
-      }, 5000);
+      const res = await this.fetchWithTimeout(
+        `${primaryApiUrl}/api/auth`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: cleanPin }),
+        },
+        5000
+      );
 
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success && data.token) {
@@ -384,11 +460,15 @@ class SyncServiceClass {
       const originApiUrl = window.location.origin.replace(/\/+$/, '');
       if (originApiUrl !== primaryApiUrl) {
         try {
-          const res = await this.fetchWithTimeout(`${originApiUrl}/api/auth`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pin: cleanPin }),
-          }, 5000);
+          const res = await this.fetchWithTimeout(
+            `${originApiUrl}/api/auth`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pin: cleanPin }),
+            },
+            5000
+          );
 
           const data = await res.json().catch(() => ({}));
           if (res.ok && data.success && data.token) {
@@ -507,6 +587,7 @@ class SyncServiceClass {
   public logout(): void {
     this.authToken = null;
     sessionStorage.removeItem('smart_tank_auth_token');
+    localStorage.removeItem('smart_tank_auth_token');
     for (const listener of this.authChangeListeners) {
       listener(false);
     }
@@ -566,6 +647,31 @@ class SyncServiceClass {
         break;
       }
 
+      case 'GATEWAY_AUTH_SUCCESS': {
+        console.log(`[SYNC GATEWAY] Registration verified: ${msg.message}`);
+        for (const listener of this.gatewayAuthListeners) {
+          listener({ success: true, message: msg.message });
+        }
+        break;
+      }
+
+      case 'GATEWAY_AUTH_FAILED': {
+        console.warn(`[SYNC GATEWAY] Registration rejected: ${msg.error}`);
+        for (const listener of this.gatewayAuthListeners) {
+          listener({ success: false, error: msg.error });
+        }
+        break;
+      }
+
+      case 'GATEWAY_SUPERSEDED': {
+        console.warn(`[SYNC GATEWAY] Gateway session superseded by newer connection: ${msg.message}`);
+        this.role = 'CLIENT';
+        for (const listener of this.gatewayAuthListeners) {
+          listener({ success: false, error: msg.message });
+        }
+        break;
+      }
+
       case 'DISPATCH_HARDWARE_COMMAND': {
         // Gateway receives command intended for physical ESP32
         if (this.role === 'GATEWAY') {
@@ -601,6 +707,10 @@ class SyncServiceClass {
         break;
       }
 
+      case 'PONG':
+        // Heartbeat response from server
+        break;
+
       default:
         break;
     }
@@ -618,6 +728,7 @@ class SyncServiceClass {
   private setAuthToken(token: string): void {
     this.authToken = token;
     sessionStorage.setItem('smart_tank_auth_token', token);
+    localStorage.setItem('smart_tank_auth_token', token);
     for (const listener of this.authChangeListeners) {
       listener(true);
     }
@@ -657,6 +768,11 @@ class SyncServiceClass {
   public onGatewayStatus(cb: GatewayStatusListener): () => void {
     this.gatewayStatusListeners.add(cb);
     return () => this.gatewayStatusListeners.delete(cb);
+  }
+
+  public onGatewayAuthStatus(cb: GatewayAuthListener): () => void {
+    this.gatewayAuthListeners.add(cb);
+    return () => this.gatewayAuthListeners.delete(cb);
   }
 
   public onGatewayCommand(cb: GatewayCommandListener): () => void {
