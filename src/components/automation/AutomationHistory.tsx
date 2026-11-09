@@ -72,8 +72,8 @@ export const AutomationHistory: React.FC<AutomationHistoryProps> = ({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
+      <div className="overflow-x-auto w-full">
+        <table className="w-full min-w-[640px] text-left text-xs">
           <thead className="bg-[#090f1e] text-slate-400 uppercase text-[11px] border-b border-slate-800/80">
             <tr>
               <th className="py-3 px-4">Timestamp</th>

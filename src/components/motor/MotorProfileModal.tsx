@@ -103,8 +103,8 @@ export const MotorProfileModal: React.FC<MotorProfileModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-[#0b1222] border border-cyan-500/40 rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-[#0b1222] border border-cyan-500/40 rounded-xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl space-y-4 sm:space-y-5 max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <div className="flex items-center space-x-2">
             <Sliders className="w-5 h-5 text-cyan-400" />
@@ -301,19 +301,19 @@ export const MotorProfileModal: React.FC<MotorProfileModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 sm:gap-3 pt-3 border-t border-slate-800">
             <button
               type="button"
               onClick={onClose}
               disabled={isSaving}
-              className="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 font-semibold transition-colors"
+              className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 font-semibold transition-colors min-h-[42px] flex items-center justify-center"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSaving}
-              className="px-5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold flex items-center space-x-2 shadow-glow-cyan transition-all"
+              className="w-full sm:w-auto px-5 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold flex items-center justify-center space-x-2 shadow-glow-cyan transition-all min-h-[42px]"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>{isSaving ? 'Sending to ESP32...' : 'Save Profile'}</span>

@@ -88,20 +88,20 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
       />
 
       {/* 3. Calibration Curve Visualizer */}
-      <div className="panel-glass rounded-xl p-6 border-slate-800 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+      <div className="panel-glass rounded-xl p-4 sm:p-6 border-slate-800 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-800/80 pb-3">
           <div className="flex items-center space-x-2">
-            <Scale className="w-5 h-5 text-cyan-400" />
+            <Scale className="w-5 h-5 text-cyan-400 shrink-0" />
             <div>
-              <h3 className="text-sm font-mono font-bold uppercase text-white tracking-wider">
+              <h3 className="text-xs sm:text-sm font-mono font-bold uppercase text-white tracking-wider">
                 Linear Interpolation Calibration Curve
               </h3>
-              <p className="text-xs text-slate-400 font-mono">
+              <p className="text-[11px] sm:text-xs text-slate-400 font-mono">
                 Plots Water Volume (ml) against Raw ADC Strain Sensor Values
               </p>
             </div>
           </div>
-          <span className="text-xs font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/40 px-2.5 py-1 rounded">
+          <span className="self-start sm:self-auto text-xs font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/40 px-2.5 py-1 rounded">
             {points.filter((p) => p.status === 'CONFIRMED').length} Points Plotted
           </span>
         </div>

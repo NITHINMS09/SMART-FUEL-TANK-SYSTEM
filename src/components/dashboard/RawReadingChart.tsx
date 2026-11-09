@@ -47,7 +47,7 @@ export const RawReadingChart: React.FC<RawReadingChartProps> = ({
         </div>
       ) : (
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 10, right: 15, left: 15, bottom: 5 }}>
+          <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
             <CartesianGrid stroke="#1e293b" strokeDasharray="3 3" opacity={0.6} />
             <XAxis
               dataKey="index"

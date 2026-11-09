@@ -47,7 +47,7 @@ export const CalibrationTable: React.FC<CalibrationTableProps> = ({
   return (
     <div className="panel-glass rounded-xl overflow-hidden border-slate-800">
       {/* Table Top Toolbar */}
-      <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-[#0a101f]/70">
+      <div className="p-3 sm:p-4 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 sm:gap-3 bg-[#0a101f]/70">
         <div className="flex items-center space-x-2">
           <span className="text-xs font-mono font-bold uppercase text-slate-300">
             Calibrated Data Points
@@ -57,29 +57,29 @@ export const CalibrationTable: React.FC<CalibrationTableProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => setSortAsc(!sortAsc)}
-            className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-mono text-slate-300 flex items-center space-x-1.5 transition-colors"
+            className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-mono text-slate-300 flex items-center justify-center space-x-1.5 transition-colors"
           >
             <ArrowUpDown className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Sort: {sortAsc ? 'Volume Asc' : 'Volume Desc'}</span>
+            <span>Sort: {sortAsc ? 'Asc' : 'Desc'}</span>
           </button>
 
           <button
             onClick={onExport}
             disabled={points.length === 0}
-            className="px-3 py-1.5 rounded-lg bg-cyan-950/40 border border-cyan-800/40 hover:border-cyan-600 text-xs font-mono text-cyan-300 flex items-center space-x-1.5 transition-colors disabled:opacity-40"
+            className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-cyan-950/40 border border-cyan-800/40 hover:border-cyan-600 text-xs font-mono text-cyan-300 flex items-center justify-center space-x-1.5 transition-colors disabled:opacity-40"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Export Points</span>
+            <span>Export</span>
           </button>
         </div>
       </div>
 
       {/* Table Content */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left font-mono text-xs">
+      <div className="overflow-x-auto w-full">
+        <table className="w-full min-w-[620px] text-left font-mono text-xs">
           <thead className="bg-[#090f1e] text-slate-400 uppercase text-[11px] border-b border-slate-800/80">
             <tr>
               <th className="py-3 px-4">Volume</th>

@@ -131,13 +131,13 @@ export const DataBackupPage: React.FC<DataBackupPageProps> = ({
   return (
     <div className="space-y-6 font-mono text-xs max-w-4xl">
       {/* Header */}
-      <div className="panel-glass rounded-xl p-6 border-slate-800 flex items-center justify-between">
+      <div className="panel-glass rounded-xl p-4 sm:p-6 border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex items-center space-x-3">
-          <div className="p-2.5 rounded-lg bg-cyan-950/60 border border-cyan-800/40 text-cyan-400 shadow-glow-cyan">
+          <div className="p-2.5 rounded-lg bg-cyan-950/60 border border-cyan-800/40 text-cyan-400 shadow-glow-cyan shrink-0">
             <Database className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-sm font-bold uppercase text-white tracking-wider">
+            <h2 className="text-xs sm:text-sm font-bold uppercase text-white tracking-wider">
               Data Backup & Hardware NVS Synchronization
             </h2>
             <p className="text-slate-400 text-xs">
@@ -147,7 +147,7 @@ export const DataBackupPage: React.FC<DataBackupPageProps> = ({
         </div>
 
         {lastBackup && (
-          <span className="text-[11px] text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">
+          <span className="text-[11px] text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg shrink-0">
             Last Backup: {formatDateTime(lastBackup)}
           </span>
         )}
@@ -156,7 +156,7 @@ export const DataBackupPage: React.FC<DataBackupPageProps> = ({
       {/* Authoritative Storage Disclaimer Card */}
       <div className="p-4 rounded-xl bg-[#091122] border border-cyan-500/40 space-y-2 text-cyan-200">
         <div className="flex items-center space-x-2 font-bold text-cyan-300 uppercase tracking-wide">
-          <Server className="w-4 h-4" />
+          <Server className="w-4 h-4 shrink-0" />
           <span>Authoritative Storage Principle</span>
         </div>
         <p className="text-slate-300 text-[11px] leading-relaxed">
@@ -165,9 +165,9 @@ export const DataBackupPage: React.FC<DataBackupPageProps> = ({
       </div>
 
       {/* ESP32 Hardware Sync Action Card */}
-      <div className="panel-glass rounded-xl p-6 border-slate-800 flex flex-wrap items-center justify-between gap-4">
+      <div className="panel-glass rounded-xl p-4 sm:p-6 border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <span className="text-sm font-bold text-white uppercase block">
+          <span className="text-xs sm:text-sm font-bold text-white uppercase block">
             Synchronize with Connected ESP32 NVS
           </span>
           <p className="text-slate-400 text-[11px] mt-0.5">
@@ -178,7 +178,7 @@ export const DataBackupPage: React.FC<DataBackupPageProps> = ({
         <button
           onClick={handleManualSync}
           disabled={connectionState !== 'CONNECTED' || isSyncing}
-          className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-slate-950 font-bold flex items-center space-x-2 shadow-glow-cyan transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-slate-950 font-bold flex items-center justify-center space-x-2 shadow-glow-cyan transition-all disabled:opacity-40 disabled:cursor-not-allowed min-h-[42px]"
         >
           <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
           <span>{isSyncing ? 'Synchronizing...' : 'Query ESP32 NVS (GET_DATA)'}</span>

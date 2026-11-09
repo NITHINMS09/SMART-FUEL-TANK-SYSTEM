@@ -80,11 +80,11 @@ export const MotorControlPad: React.FC<MotorControlPadProps> = ({
             <label className="block text-slate-400 uppercase font-semibold mb-2">
               Target Operation Mode
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
               <button
                 type="button"
                 onClick={() => setActionType('OPEN')}
-                className={`py-2.5 px-4 rounded-lg border font-bold text-xs flex items-center justify-center space-x-2 transition-all ${
+                className={`py-2.5 px-3 sm:px-4 rounded-lg border font-bold text-xs flex items-center justify-center space-x-2 transition-all min-h-[42px] ${
                   actionType === 'OPEN'
                     ? 'bg-sky-600/30 border-sky-400 text-sky-300 shadow-glow-blue'
                     : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
@@ -95,7 +95,7 @@ export const MotorControlPad: React.FC<MotorControlPadProps> = ({
               <button
                 type="button"
                 onClick={() => setActionType('CLOSE')}
-                className={`py-2.5 px-4 rounded-lg border font-bold text-xs flex items-center justify-center space-x-2 transition-all ${
+                className={`py-2.5 px-3 sm:px-4 rounded-lg border font-bold text-xs flex items-center justify-center space-x-2 transition-all min-h-[42px] ${
                   actionType === 'CLOSE'
                     ? 'bg-cyan-600/30 border-cyan-400 text-cyan-300 shadow-glow-cyan'
                     : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
@@ -180,14 +180,14 @@ export const MotorControlPad: React.FC<MotorControlPadProps> = ({
             <label className="block text-slate-400 uppercase font-semibold mb-2">
               Transmit Direct Rotation Command
             </label>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <button
                 type="button"
                 onClick={() => handleExecute('CW')}
                 disabled={!isConnected || isMotorRunning}
-                className="py-3 px-4 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 active:scale-95 text-slate-950 font-bold flex items-center justify-center space-x-2 shadow-glow-blue transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="py-3 px-4 rounded-xl bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 active:scale-95 text-slate-950 font-bold flex items-center justify-center space-x-2 shadow-glow-blue transition-all disabled:opacity-40 disabled:cursor-not-allowed min-h-[46px]"
               >
-                <RotateCw className="w-4 h-4" />
+                <RotateCw className="w-4 h-4 shrink-0" />
                 <span>Rotate Clockwise (CW)</span>
               </button>
 
@@ -195,9 +195,9 @@ export const MotorControlPad: React.FC<MotorControlPadProps> = ({
                 type="button"
                 onClick={() => handleExecute('CCW')}
                 disabled={!isConnected || isMotorRunning}
-                className="py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 active:scale-95 text-slate-950 font-bold flex items-center justify-center space-x-2 shadow-glow-cyan transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                className="py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 active:scale-95 text-slate-950 font-bold flex items-center justify-center space-x-2 shadow-glow-cyan transition-all disabled:opacity-40 disabled:cursor-not-allowed min-h-[46px]"
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="w-4 h-4 shrink-0" />
                 <span>Rotate Anticlockwise (CCW)</span>
               </button>
             </div>

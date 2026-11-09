@@ -61,23 +61,25 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
   };
 
   return (
-    <div className="panel-glass rounded-xl p-6 border-slate-800 space-y-5">
-      <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+    <div className="panel-glass rounded-xl p-4 sm:p-6 border-slate-800 space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
         <div className="flex items-center space-x-3">
-          <div className="p-2 rounded-lg bg-cyan-950/60 border border-cyan-800/40 text-cyan-400">
+          <div className="p-2 rounded-lg bg-cyan-950/60 border border-cyan-800/40 text-cyan-400 shrink-0">
             <Scale className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-sm font-mono font-bold uppercase text-white tracking-wider">
+            <h2 className="text-xs sm:text-sm font-mono font-bold uppercase text-white tracking-wider">
               Calibrate Known Reference Point
             </h2>
-            <p className="text-xs text-slate-400 font-mono">
+            <p className="text-[11px] sm:text-xs text-slate-400 font-mono">
               Sends CAL,&lt;ml&gt; to ESP32 to compute 20-sample average, verify stability, and save directly to NVS
             </p>
           </div>
         </div>
 
-        <StatusBadge status={stats.stability} />
+        <div className="self-start sm:self-auto">
+          <StatusBadge status={stats.stability} />
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -86,7 +88,7 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
           <label className="block text-xs font-mono uppercase text-slate-400 font-semibold mb-2">
             1. Enter Known Water Volume (ml)
           </label>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 items-stretch sm:items-center">
             <div className="relative flex-1">
               <input
                 type="number"
@@ -104,36 +106,38 @@ export const CalibrationForm: React.FC<CalibrationFormProps> = ({
             </div>
 
             {/* Requirement 1: Click Capture 20 Readings to send CAL,<ml> */}
-            <button
-              type="submit"
-              disabled={!isConnected || !isValidVolume || isCalibrating}
-              className="px-6 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-mono font-bold text-xs uppercase tracking-wider flex items-center space-x-2 shadow-glow-cyan transition-all"
-            >
-              {isCalibrating ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Sampling ({elapsedSeconds}s)...</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4 fill-current" />
-                  <span>Capture 20 Readings</span>
-                </>
-              )}
-            </button>
-
-            {/* Cancel sampling button to unlock UI immediately */}
-            {isCalibrating && onCancelCalibration && (
+            <div className="flex items-center gap-2">
               <button
-                type="button"
-                onClick={onCancelCalibration}
-                className="px-4 py-2.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-mono font-bold text-xs uppercase tracking-wider flex items-center space-x-1.5 transition-all shadow-sm"
-                title="Cancel sampling and unlock interface"
+                type="submit"
+                disabled={!isConnected || !isValidVolume || isCalibrating}
+                className="flex-1 sm:flex-none px-4 sm:px-6 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-mono font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2 shadow-glow-cyan transition-all min-h-[42px]"
               >
-                <XCircle className="w-4 h-4 text-rose-400" />
-                <span>Cancel</span>
+                {isCalibrating ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
+                    <span>Sampling ({elapsedSeconds}s)...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 fill-current shrink-0" />
+                    <span>Capture 20 Readings</span>
+                  </>
+                )}
               </button>
-            )}
+
+              {/* Cancel sampling button to unlock UI immediately */}
+              {isCalibrating && onCancelCalibration && (
+                <button
+                  type="button"
+                  onClick={onCancelCalibration}
+                  className="px-3 sm:px-4 py-2.5 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-mono font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-1.5 transition-all shadow-sm min-h-[42px]"
+                  title="Cancel sampling and unlock interface"
+                >
+                  <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>Cancel</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Quick Presets */}

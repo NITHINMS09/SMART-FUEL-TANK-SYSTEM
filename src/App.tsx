@@ -27,6 +27,7 @@ import { DataBackupPage } from './pages/DataBackupPage';
 export function App() {
   const [activePage, setActivePage] = useState<PageId>('dashboard');
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [settings, setSettings] = useState<DeviceSettings>(() => StorageService.loadSettings());
 
   // Hardware Serial Hook
@@ -166,20 +167,27 @@ export function App() {
         isConsoleOpen={isConsoleOpen}
         isWebSerialSupported={isWebSerialSupported}
         errorMessage={errorMessage}
+        onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        isMobileMenuOpen={isMobileMenuOpen}
       />
 
       {/* Main Container: Sidebar + Page View */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         <Sidebar
           activePage={activePage}
-          onSelectPage={setActivePage}
+          onSelectPage={(page) => {
+            setActivePage(page);
+            setIsMobileMenuOpen(false);
+          }}
           calibrationPointCount={points.filter((p) => p.status === 'CONFIRMED').length}
           motorProfileCount={profiles.length}
           mode={mode}
           isMotorRunning={motorStatus === 'RUNNING'}
+          isMobileOpen={isMobileMenuOpen}
+          onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
 
-        <main className="flex-1 overflow-y-auto p-6 bg-[#070b14]/50">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 bg-[#070b14]/50 w-full min-w-0">
           {activePage === 'driver-dashboard' && (
             <DriverDashboardPage
               volumeInterpolation={volumeInterpolation}

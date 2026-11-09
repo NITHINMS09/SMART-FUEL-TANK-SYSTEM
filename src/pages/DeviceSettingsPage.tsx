@@ -239,7 +239,7 @@ export const DeviceSettingsPage: React.FC<DeviceSettingsPageProps> = ({
         <div className="flex justify-end">
           <button
             type="submit"
-            className="px-6 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold uppercase tracking-wider flex items-center space-x-2 shadow-glow-cyan transition-all"
+            className="w-full sm:w-auto px-6 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold uppercase tracking-wider flex items-center justify-center space-x-2 shadow-glow-cyan transition-all min-h-[44px]"
           >
             <Save className="w-4 h-4" />
             <span>Save Device Configuration</span>

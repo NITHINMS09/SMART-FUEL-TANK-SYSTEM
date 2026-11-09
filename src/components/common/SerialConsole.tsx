@@ -54,8 +54,8 @@ export const SerialConsole: React.FC<SerialConsoleProps> = ({
     <div
       className={`fixed z-50 transition-all duration-300 panel-glass shadow-2xl flex flex-col border-cyan-500/30 ${
         isExpanded
-          ? 'inset-4 rounded-xl'
-          : 'bottom-4 right-4 w-[600px] max-w-[95vw] h-[450px] rounded-xl'
+          ? 'inset-2 sm:inset-4 rounded-xl'
+          : 'inset-2 sm:inset-auto sm:bottom-4 sm:right-4 sm:w-[600px] sm:max-w-[95vw] sm:h-[450px] max-h-[90vh] rounded-xl'
       }`}
     >
       {/* Console Header */}

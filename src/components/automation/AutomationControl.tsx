@@ -186,19 +186,19 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
         </div>
 
         {/* Primary Cap Action Controls */}
-        <div className="flex items-center space-x-2.5">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           <button
             type="button"
             onClick={onTriggerCapClose}
             disabled={!isConnected || isMotorMoving}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[42px] ${
               capState === 'CLOSED'
                 ? 'bg-cyan-600 text-slate-950 shadow-glow-cyan'
                 : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-800/60'
             }`}
             title="Close cap to configured angle and enable continuous automatic adjustments"
           >
-            <Lock className="w-4 h-4 fill-current" />
+            <Lock className="w-4 h-4 fill-current shrink-0" />
             <span>CAP CLOSE (ENABLE AUTO)</span>
           </button>
 
@@ -206,14 +206,14 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
             type="button"
             onClick={onTriggerCapOpen}
             disabled={!isConnected || isMotorMoving}
-            className={`px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`flex-1 sm:flex-none px-3.5 sm:px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed min-h-[42px] ${
               capState === 'OPEN'
                 ? 'bg-sky-600 text-white shadow-glow-blue'
                 : 'bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-800/60'
             }`}
             title="Open cap to configured angle and disable automatic adjustments"
           >
-            <Unlock className="w-4 h-4" />
+            <Unlock className="w-4 h-4 shrink-0" />
             <span>CAP OPEN (DISABLE AUTO)</span>
           </button>
 
@@ -223,7 +223,7 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
             onClick={onZeroPosition}
             disabled={!isConnected || isMotorMoving}
             title="Zero motor angular reference position (set current angle as 0°)"
-            className="px-3 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold transition-all disabled:opacity-40"
+            className="px-3 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold transition-all disabled:opacity-40 min-h-[42px]"
           >
             Zero 0°
           </button>
@@ -232,10 +232,10 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
           <button
             type="button"
             onClick={onEmergencyStop}
-            className="px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold tracking-wider flex items-center space-x-1.5 shadow-glow-red transition-all"
+            className="px-3.5 sm:px-4 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-bold tracking-wider flex items-center justify-center space-x-1.5 shadow-glow-red transition-all min-h-[42px]"
             title="Immediately stop motor movement and de-energize coils"
           >
-            <ShieldAlert className="w-4 h-4 fill-current" />
+            <ShieldAlert className="w-4 h-4 fill-current shrink-0" />
             <span>STOP</span>
           </button>
         </div>

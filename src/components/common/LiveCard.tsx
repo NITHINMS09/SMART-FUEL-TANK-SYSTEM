@@ -51,28 +51,28 @@ export const LiveCard: React.FC<LiveCardProps> = ({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-xl bg-[#0c1527]/80 backdrop-blur-md p-5 border transition-all duration-300 ${borderColors} ${className}`}
+      className={`relative overflow-hidden rounded-xl bg-[#0c1527]/80 backdrop-blur-md p-3.5 sm:p-5 border transition-all duration-300 ${borderColors} ${className}`}
     >
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+      <div className="flex items-center justify-between mb-2 sm:mb-3">
+        <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400 truncate mr-2">
           {title}
         </span>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
           {badge}
           {Icon && (
-            <div className={`p-2 rounded-lg border ${iconColors}`}>
-              <Icon className="w-4 h-4" />
+            <div className={`p-1.5 sm:p-2 rounded-lg border ${iconColors}`}>
+              <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
           )}
         </div>
       </div>
 
-      <div className="flex items-baseline space-x-2">
-        <span className={`text-2xl lg:text-3xl font-mono font-bold tracking-tight ${textColors}`}>
+      <div className="flex items-baseline space-x-1.5 sm:space-x-2">
+        <span className={`text-xl xs:text-2xl lg:text-3xl font-mono font-bold tracking-tight truncate ${textColors}`}>
           {value}
         </span>
         {unit && (
-          <span className="text-sm font-mono font-medium text-slate-400">
+          <span className="text-xs sm:text-sm font-mono font-medium text-slate-400 shrink-0">
             {unit}
           </span>
         )}

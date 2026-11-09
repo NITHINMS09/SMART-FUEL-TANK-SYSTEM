@@ -61,13 +61,13 @@ export const LiveMonitoringPage: React.FC<LiveMonitoringPageProps> = ({
   return (
     <div className="space-y-6 font-mono text-xs">
       {/* Top Telemetry Header */}
-      <div className="panel-glass rounded-xl p-6 border-slate-800 flex flex-wrap items-center justify-between gap-4">
+      <div className="panel-glass rounded-xl p-4 sm:p-6 border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div className="flex items-center space-x-3">
-          <div className="p-2.5 rounded-lg bg-cyan-950/60 border border-cyan-800/40 text-cyan-400 shadow-glow-cyan">
+          <div className="p-2.5 rounded-lg bg-cyan-950/60 border border-cyan-800/40 text-cyan-400 shadow-glow-cyan shrink-0">
             <Radio className="w-5 h-5 animate-pulse" />
           </div>
           <div>
-            <h2 className="text-sm font-bold uppercase text-white tracking-wider flex items-center space-x-2">
+            <h2 className="text-xs sm:text-sm font-bold uppercase text-white tracking-wider flex items-center space-x-2">
               <span>HX711 Live Load Cell Telemetry</span>
             </h2>
             <p className="text-slate-400 text-xs">
@@ -76,11 +76,11 @@ export const LiveMonitoringPage: React.FC<LiveMonitoringPageProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 self-end sm:self-auto">
           <StatusBadge status={stats.stability} size="lg" />
           <button
             onClick={onClearReadings}
-            className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white transition-colors"
+            className="p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"
             title="Clear buffer"
           >
             <Trash2 className="w-4 h-4" />
@@ -89,7 +89,7 @@ export const LiveMonitoringPage: React.FC<LiveMonitoringPageProps> = ({
       </div>
 
       {/* Primary Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         {/* Current Raw */}
         <LiveCard
           title="Current Raw Reading"

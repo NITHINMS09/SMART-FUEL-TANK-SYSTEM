@@ -136,7 +136,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       )}
 
       {/* Top Hardware Diagnostics Ribbon */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* ESP32 Status */}
         <div
           className={`panel-glass rounded-xl p-4 border transition-all ${
@@ -547,12 +547,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
             <button
               type="button"
               onClick={onTriggerCapClose}
               disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
-              className={`px-5 py-2.5 rounded-xl font-mono text-xs font-extrabold flex items-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-mono text-xs font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                 automationFeedbackState?.capState === 'CLOSED'
                   ? 'bg-cyan-600 text-slate-950 shadow-glow-cyan'
                   : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-800/60'
@@ -567,7 +567,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               type="button"
               onClick={onTriggerCapOpen}
               disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
-              className={`px-5 py-2.5 rounded-xl font-mono text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-mono text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                 automationFeedbackState?.capState === 'OPEN'
                   ? 'bg-sky-600 text-white shadow-glow-blue'
                   : 'bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-800/60'

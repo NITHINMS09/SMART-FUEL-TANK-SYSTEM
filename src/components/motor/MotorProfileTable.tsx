@@ -38,10 +38,10 @@ export const MotorProfileTable: React.FC<MotorProfileTableProps> = ({
   return (
     <div className="panel-glass rounded-xl overflow-hidden border-slate-800">
       {/* Header bar */}
-      <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-[#0a101f]/70">
+      <div className="p-3 sm:p-4 border-b border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 sm:gap-3 bg-[#0a101f]/70">
         <div className="flex items-center space-x-2">
           <span className="text-xs font-mono font-bold uppercase text-slate-300">
-            Water Volume Motor Rotation Profiles
+            Water Volume Motor Profiles
           </span>
           <span className="text-xs font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded">
             {profiles.length} / 30 MAX
@@ -50,7 +50,7 @@ export const MotorProfileTable: React.FC<MotorProfileTableProps> = ({
 
         <button
           onClick={onOpenAddModal}
-          className="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-mono font-bold text-xs flex items-center space-x-1.5 shadow-glow-cyan transition-colors"
+          className="w-full sm:w-auto px-3.5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-mono font-bold text-xs flex items-center justify-center space-x-1.5 shadow-glow-cyan transition-colors min-h-[40px]"
         >
           <Plus className="w-4 h-4" />
           <span>Add Volume Profile</span>
@@ -58,8 +58,8 @@ export const MotorProfileTable: React.FC<MotorProfileTableProps> = ({
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left font-mono text-xs">
+      <div className="overflow-x-auto w-full">
+        <table className="w-full min-w-[620px] text-left font-mono text-xs">
           <thead className="bg-[#090f1e] text-slate-400 uppercase text-[11px] border-b border-slate-800/80">
             <tr>
               <th className="py-3 px-4">Volume</th>

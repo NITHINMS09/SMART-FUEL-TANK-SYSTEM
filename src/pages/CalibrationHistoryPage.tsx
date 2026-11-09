@@ -113,8 +113,8 @@ export const CalibrationHistoryPage: React.FC<CalibrationHistoryPageProps> = ({ 
           </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full min-w-[620px] text-left">
             <thead className="bg-[#090f1e] text-slate-400 uppercase text-[11px] border-b border-slate-800">
               <tr>
                 <th className="py-3 px-4">Calibrated At</th>

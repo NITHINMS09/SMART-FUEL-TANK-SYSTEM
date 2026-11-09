@@ -11,6 +11,7 @@ import {
   Settings,
   Database,
   ShieldCheck,
+  X,
 } from 'lucide-react';
 import { OperatingMode } from '../../types';
 
@@ -33,6 +34,8 @@ interface SidebarProps {
   motorProfileCount: number;
   mode: OperatingMode;
   isMotorRunning: boolean;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -42,6 +45,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   motorProfileCount,
   mode,
   isMotorRunning,
+  isMobileOpen = false,
+  onCloseMobile,
 }) => {
   const navItems: {
     id: PageId;
@@ -98,7 +103,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Automation',
       icon: Cpu,
       badge: mode,
-      badgeColor: mode === 'AUTOMATIC' ? 'bg-cyan-950 text-cyan-400 border border-cyan-800/50' : 'bg-slate-900 text-slate-400 border border-slate-800',
+      badgeColor:
+        mode === 'AUTOMATIC'
+          ? 'bg-cyan-950 text-cyan-400 border border-cyan-800/50'
+          : 'bg-slate-900 text-slate-400 border border-slate-800',
     },
     {
       id: 'device-settings',
@@ -112,13 +120,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
-  return (
-    <aside className="w-64 shrink-0 bg-[#080d1a] border-r border-slate-800/80 flex flex-col justify-between select-none min-h-[calc(100vh-65px)]">
+  const handleNavClick = (id: PageId) => {
+    onSelectPage(id);
+    if (onCloseMobile) {
+      onCloseMobile();
+    }
+  };
+
+  const navContent = (
+    <div className="flex flex-col justify-between h-full select-none">
       {/* Navigation Links */}
-      <div className="p-3 space-y-1">
-        <div className="px-3 py-2 text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold">
-          Navigation Control
+      <div className="p-3 space-y-1 overflow-y-auto">
+        <div className="flex items-center justify-between px-3 py-2">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold">
+            Navigation Control
+          </span>
+          {onCloseMobile && (
+            <button
+              onClick={onCloseMobile}
+              className="md:hidden p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
+
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activePage === item.id;
@@ -126,8 +152,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <button
               key={item.id}
-              onClick={() => onSelectPage(item.id)}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg font-mono text-xs transition-all duration-200 group text-left ${
+              onClick={() => handleNavClick(item.id)}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg font-mono text-xs transition-all duration-200 group text-left min-h-[42px] ${
                 isActive
                   ? 'bg-cyan-950/60 text-cyan-300 font-semibold border border-cyan-500/40 shadow-glow-cyan'
                   : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60 border border-transparent'
@@ -135,7 +161,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <div className="flex items-center space-x-3">
                 <Icon
-                  className={`w-4 h-4 transition-colors ${
+                  className={`w-4 h-4 shrink-0 transition-colors ${
                     isActive
                       ? 'text-cyan-400'
                       : 'text-slate-500 group-hover:text-slate-300'
@@ -146,7 +172,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
               {item.badge !== undefined && (
                 <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium ${
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium shrink-0 ml-2 ${
                     item.badgeColor || 'bg-slate-800 text-slate-400'
                   }`}
                 >
@@ -159,7 +185,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Hardware Pin Status Quick Reference */}
-      <div className="p-3 m-3 rounded-lg bg-[#050913] border border-slate-800/80 text-[11px] font-mono space-y-2">
+      <div className="p-3 m-3 rounded-lg bg-[#050913] border border-slate-800/80 text-[11px] font-mono space-y-2 shrink-0">
         <div className="flex items-center justify-between text-slate-400 font-semibold">
           <span className="flex items-center space-x-1">
             <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
@@ -176,7 +202,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div>BAUD: <span className="text-cyan-400">115200</span></div>
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Persistent Sidebar */}
+      <aside className="hidden md:flex w-64 shrink-0 bg-[#080d1a] border-r border-slate-800/80 flex-col justify-between min-h-[calc(100vh-60px)]">
+        {navContent}
+      </aside>
+
+      {/* Mobile Slide-Over Drawer with Backdrop */}
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          {/* Backdrop Overlay */}
+          <div
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
+            onClick={onCloseMobile}
+            aria-hidden="true"
+          />
+
+          {/* Slide-in Navigation Drawer Panel */}
+          <div className="relative w-72 max-w-[85vw] bg-[#080d1a] border-r border-slate-800 shadow-2xl z-10 flex flex-col h-full animate-slideInLeft">
+            {navContent}
+          </div>
+        </div>
+      )}
+    </>
   );
 };
-

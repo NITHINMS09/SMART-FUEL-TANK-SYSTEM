@@ -94,7 +94,6 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
   }, [currentVolumeMl, fuelPercentage]);
 
   // Speedometer Needle: Resting at cruising 60 km/h (sweep -120° to +120° for 0-240 km/h)
-  // 60 km/h is (-120 + (60/240)*240) = -60°
   const speedNeedleAngle = -60;
 
   // Button Click Handlers
@@ -193,49 +192,49 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
   }, []);
 
   return (
-    <div className="w-full min-h-[calc(100vh-5rem)] bg-[#050811] text-slate-100 flex flex-col justify-between p-4 sm:p-6 lg:p-8 rounded-2xl border border-cyan-950/60 shadow-[0_0_50px_rgba(6,182,212,0.06)] relative overflow-hidden select-none">
+    <div className="w-full min-h-[calc(100vh-4.5rem)] bg-[#050811] text-slate-100 flex flex-col justify-between p-3 sm:p-5 lg:p-8 rounded-xl sm:rounded-2xl border border-cyan-950/60 shadow-[0_0_50px_rgba(6,182,212,0.06)] relative overflow-hidden select-none">
       {/* Top Ambient Glow & HUD Header Bar */}
       <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-cyan-950/20 via-sky-950/5 to-transparent pointer-events-none" />
 
       {/* Cockpit HUD Bar */}
-      <div className="relative z-10 flex flex-wrap items-center justify-between gap-4 border-b border-cyan-900/30 pb-4 mb-4">
+      <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 border-b border-cyan-900/30 pb-3 sm:pb-4 mb-3 sm:mb-4">
         {/* Left: System / Vehicle Title */}
-        <div className="flex items-center space-x-3">
-          <div className="w-3 h-3 rounded-full bg-cyan-400 shadow-[0_0_12px_#22d3ee] animate-pulse" />
+        <div className="flex items-center space-x-2.5 sm:space-x-3">
+          <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-cyan-400 shadow-[0_0_12px_#22d3ee] animate-pulse shrink-0" />
           <div>
-            <h1 className="font-mono text-sm sm:text-base font-extrabold uppercase tracking-[0.25em] text-white flex items-center space-x-2">
+            <h1 className="font-mono text-xs sm:text-base font-extrabold uppercase tracking-[0.2em] text-white flex items-center space-x-1.5 sm:space-x-2">
               <span>SMART TANK</span>
-              <span className="text-cyan-400">COCKPIT CLUSTER</span>
+              <span className="text-cyan-400">COCKPIT</span>
             </h1>
-            <p className="font-mono text-[11px] text-cyan-500/70 tracking-wider">
-              HIGH PRECISION DIGITAL INSTRUMENT PANEL
+            <p className="font-mono text-[9px] sm:text-[11px] text-cyan-500/70 tracking-wider">
+              DIGITAL AUTOMOTIVE INSTRUMENT PANEL
             </p>
           </div>
         </div>
 
-        {/* Center: Drive Mode / Cluster Pill */}
-        <div className="flex items-center space-x-2 px-4 py-1.5 rounded-full bg-slate-900/90 border border-slate-700 shadow-inner font-mono text-xs font-bold">
+        {/* Center / Pill: Drive Mode & Hardware Link */}
+        <div className="flex items-center space-x-2 px-3 py-1 sm:px-4 sm:py-1.5 rounded-full bg-slate-900/90 border border-slate-700 shadow-inner font-mono text-[11px] sm:text-xs font-bold">
           <span className="text-slate-500">P</span>
           <span className="text-slate-500">R</span>
           <span className="text-slate-500">N</span>
-          <span className="text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/60 shadow-[0_0_8px_rgba(6,182,212,0.4)]">
+          <span className="text-cyan-300 bg-cyan-950/80 px-1.5 sm:px-2 py-0.5 rounded border border-cyan-500/60 shadow-[0_0_8px_rgba(6,182,212,0.4)]">
             D [AUTO]
           </span>
-          <span className="text-slate-600 mx-1">|</span>
-          <span className="text-emerald-400 flex items-center space-x-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
+          <span className="text-slate-600 mx-0.5 sm:mx-1">|</span>
+          <span className="text-emerald-400 flex items-center space-x-1 text-[10px] sm:text-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse shrink-0" />
             <span>{connectionState === 'CONNECTED' ? 'ESP32 LINKED' : 'OFFLINE'}</span>
           </span>
         </div>
 
         {/* Right: Cockpit Clock & Telemetry Quick Read */}
-        <div className="flex items-center space-x-4 font-mono text-xs">
+        <div className="flex items-center space-x-3 sm:space-x-4 font-mono text-[10px] sm:text-xs">
           <div className="text-right hidden sm:block">
-            <span className="text-[10px] uppercase text-slate-500 block">SYSTEM TIME</span>
+            <span className="text-[9px] sm:text-[10px] uppercase text-slate-500 block">SYSTEM TIME</span>
             <span className="text-cyan-300 font-bold tracking-widest">{currentTime || '--:--:--'}</span>
           </div>
           <div className="text-right">
-            <span className="text-[10px] uppercase text-slate-500 block">LOAD CELL</span>
+            <span className="text-[9px] sm:text-[10px] uppercase text-slate-500 block">LOAD CELL</span>
             <span
               className={`font-bold ${
                 stats.stability === 'STABLE'
@@ -252,12 +251,12 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
       </div>
 
       {/* Main Cluster Stage: Gauges & Center Console */}
-      <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center justify-center my-auto py-4">
+      <div className="relative z-10 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-center justify-center my-auto py-2 sm:py-4">
         {/* ================================================================ */}
         {/* LEFT GAUGE: ODOMETER & SPEEDOMETER CLUSTER (Cols 1-4)             */}
         {/* ================================================================ */}
         <div className="lg:col-span-4 flex flex-col items-center justify-center">
-          <div className="relative w-[300px] h-[300px] sm:w-[340px] sm:h-[340px] flex items-center justify-center">
+          <div className="relative w-[260px] h-[260px] xs:w-[280px] xs:h-[280px] sm:w-[320px] sm:h-[320px] md:w-[340px] md:h-[340px] max-w-full aspect-square flex items-center justify-center">
             {/* Ambient Radial Backlight Glow */}
             <div className="absolute inset-4 rounded-full bg-cyan-950/20 blur-2xl pointer-events-none" />
 
@@ -391,38 +390,38 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
             </svg>
 
             {/* Odometer Drum Display Overlaid on Lower Center of Dial */}
-            <div className="absolute bottom-11 flex flex-col items-center pointer-events-none">
-              <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-cyan-400 mb-1 flex items-center space-x-1">
+            <div className="absolute bottom-8 xs:bottom-10 sm:bottom-11 flex flex-col items-center pointer-events-none">
+              <span className="text-[9px] xs:text-[10px] font-mono font-extrabold uppercase tracking-widest text-cyan-400 mb-0.5 sm:mb-1 flex items-center space-x-1">
                 <span>ODO</span>
               </span>
 
               {/* Classic / Modern Rolling Odometer Counter Box */}
-              <div className="flex items-center bg-black/90 px-2.5 py-1 rounded-md border border-slate-700 shadow-[inset_0_2px_8px_rgba(0,0,0,0.8),0_0_10px_rgba(15,23,42,0.6)]">
-                {/* 6 Digit Rollers: '0', '1', '2', '4', '5', '8' */}
+              <div className="flex items-center bg-black/90 px-1.5 xs:px-2.5 py-0.5 sm:py-1 rounded-md border border-slate-700 shadow-[inset_0_2px_8px_rgba(0,0,0,0.8),0_0_10px_rgba(15,23,42,0.6)]">
+                {/* 6 Digit Rollers */}
                 {['0', '1', '2', '4', '5', '8'].map((digit, idx) => (
                   <div
                     key={idx}
-                    className="w-5 h-6 mx-0.5 bg-gradient-to-b from-[#111827] via-[#1f2937] to-[#0b0f17] rounded flex items-center justify-center border-t border-b border-slate-600/80 shadow-inner"
+                    className="w-4 h-5 xs:w-5 xs:h-6 mx-0.5 bg-gradient-to-b from-[#111827] via-[#1f2937] to-[#0b0f17] rounded flex items-center justify-center border-t border-b border-slate-600/80 shadow-inner"
                   >
-                    <span className="font-mono text-sm font-bold text-white tracking-wider">
+                    <span className="font-mono text-xs xs:text-sm font-bold text-white tracking-wider">
                       {digit}
                     </span>
                   </div>
                 ))}
-                <span className="font-mono text-[11px] font-bold text-slate-400 ml-1.5 uppercase">
+                <span className="font-mono text-[9px] xs:text-[11px] font-bold text-slate-400 ml-1 uppercase">
                   km
                 </span>
               </div>
 
               {/* Trip A Reference Readout */}
-              <div className="mt-1 flex items-center space-x-2 font-mono text-[10px] text-slate-500">
+              <div className="mt-0.5 sm:mt-1 flex items-center space-x-1.5 font-mono text-[9px] sm:text-[10px] text-slate-500">
                 <span>TRIP A</span>
                 <span className="text-slate-300 font-semibold">342.1 km</span>
               </div>
             </div>
           </div>
 
-          <span className="font-mono text-xs font-bold text-slate-400 tracking-wider mt-2 uppercase">
+          <span className="font-mono text-[11px] sm:text-xs font-bold text-slate-400 tracking-wider mt-1.5 sm:mt-2 uppercase text-center">
             VEHICLE ODOMETER &amp; SPEED
           </span>
         </div>
@@ -430,43 +429,43 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
         {/* ================================================================ */}
         {/* CENTER CONSOLE: AUTOMOTIVE COCKPIT CAP CONTROLS (Cols 5-8)       */}
         {/* ================================================================ */}
-        <div className="lg:col-span-4 flex flex-col items-center justify-center space-y-6 px-2">
+        <div className="lg:col-span-4 flex flex-col items-center justify-center space-y-4 sm:space-y-6 px-1 sm:px-2 w-full">
           {/* Central Prominent Cap Status Display */}
           <div
-            className={`w-full max-w-sm rounded-2xl p-6 border transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden shadow-2xl ${
+            className={`w-full max-w-xs sm:max-w-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 border transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden shadow-2xl ${
               capState === 'CLOSED'
                 ? 'bg-gradient-to-b from-cyan-950/60 via-[#061224] to-[#040814] border-cyan-500/70 shadow-[0_0_35px_rgba(6,182,212,0.25)]'
                 : 'bg-gradient-to-b from-amber-950/50 via-[#190f05] to-[#0c0803] border-amber-500/70 shadow-[0_0_35px_rgba(245,158,11,0.2)]'
             }`}
           >
             {/* Corner Cockpit Accent Decals */}
-            <div className="absolute top-2 left-2 w-2.5 h-2.5 border-t-2 border-l-2 border-slate-500" />
-            <div className="absolute top-2 right-2 w-2.5 h-2.5 border-t-2 border-r-2 border-slate-500" />
-            <div className="absolute bottom-2 left-2 w-2.5 h-2.5 border-b-2 border-l-2 border-slate-500" />
-            <div className="absolute bottom-2 right-2 w-2.5 h-2.5 border-b-2 border-r-2 border-slate-500" />
+            <div className="absolute top-2 left-2 w-2 h-2 sm:w-2.5 sm:h-2.5 border-t-2 border-l-2 border-slate-500" />
+            <div className="absolute top-2 right-2 w-2 h-2 sm:w-2.5 sm:h-2.5 border-t-2 border-r-2 border-slate-500" />
+            <div className="absolute bottom-2 left-2 w-2 h-2 sm:w-2.5 sm:h-2.5 border-b-2 border-l-2 border-slate-500" />
+            <div className="absolute bottom-2 right-2 w-2 h-2 sm:w-2.5 sm:h-2.5 border-b-2 border-r-2 border-slate-500" />
 
-            <span className="text-[10px] font-mono font-extrabold uppercase tracking-[0.2em] text-slate-400 mb-2">
+            <span className="text-[9px] sm:text-[10px] font-mono font-extrabold uppercase tracking-[0.2em] text-slate-400 mb-1.5 sm:mb-2">
               AUTOMOTIVE CAP MONITOR
             </span>
 
             {/* Status Icon */}
             <div
-              className={`p-4 rounded-full border mb-3 relative ${
+              className={`p-3 sm:p-4 rounded-full border mb-2 sm:mb-3 relative ${
                 capState === 'CLOSED'
                   ? 'bg-cyan-950/80 border-cyan-400 text-cyan-300 shadow-[0_0_25px_rgba(6,182,212,0.5)]'
                   : 'bg-amber-950/80 border-amber-400 text-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.4)]'
               }`}
             >
               {capState === 'CLOSED' ? (
-                <Lock className="w-9 h-9 fill-current" />
+                <Lock className="w-7 h-7 sm:w-9 sm:h-9 fill-current" />
               ) : (
-                <Unlock className="w-9 h-9" />
+                <Unlock className="w-7 h-7 sm:w-9 sm:h-9" />
               )}
             </div>
 
             {/* Cap Status State Heading */}
             <h2
-              className={`font-mono text-2xl sm:text-3xl font-black uppercase tracking-widest ${
+              className={`font-mono text-xl sm:text-3xl font-black uppercase tracking-widest ${
                 capState === 'CLOSED'
                   ? 'text-cyan-300 drop-shadow-[0_0_12px_rgba(6,182,212,0.8)]'
                   : 'text-amber-400 drop-shadow-[0_0_12px_rgba(245,158,11,0.8)]'
@@ -476,7 +475,7 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
             </h2>
 
             {/* System Status Subtitle */}
-            <div className="mt-3 px-3 py-1 rounded-full bg-black/60 border border-slate-700 font-mono text-[11px] text-slate-300">
+            <div className="mt-2 sm:mt-3 px-2.5 sm:px-3 py-1 rounded-full bg-black/60 border border-slate-700 font-mono text-[10px] sm:text-[11px] text-slate-300">
               {systemState ||
                 (capState === 'CLOSED'
                   ? 'AUTOMATION ACTIVE · MONITORING'
@@ -485,15 +484,15 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
 
             {/* Dynamic Status Activity Pulse */}
             {motorStatus === 'RUNNING' && (
-              <div className="mt-2 text-xs font-mono text-amber-400 flex items-center space-x-1.5 animate-pulse">
+              <div className="mt-2 text-[11px] sm:text-xs font-mono text-amber-400 flex items-center space-x-1.5 animate-pulse">
                 <RotateCw className="w-3.5 h-3.5 animate-spin" />
-                <span>STEPPER MOTOR ADJUSTING...</span>
+                <span>MOTOR ADJUSTING...</span>
               </div>
             )}
           </div>
 
           {/* Automotive Cockpit Dual Push-Buttons */}
-          <div className="w-full max-w-sm grid grid-cols-2 gap-4">
+          <div className="w-full max-w-xs sm:max-w-sm grid grid-cols-2 gap-3 sm:gap-4">
             {/* 1. CAP CLOSE BUTTON */}
             <button
               type="button"
@@ -504,7 +503,7 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
                 motorStatus === 'RUNNING' ||
                 isProcessing
               }
-              className={`group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
+              className={`group relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 min-h-[50px] sm:min-h-[64px] ${
                 capState === 'CLOSED'
                   ? 'bg-gradient-to-b from-cyan-600 to-cyan-800 border-cyan-300 text-white shadow-[0_0_30px_rgba(6,182,212,0.6)]'
                   : 'bg-gradient-to-b from-[#0f172a] to-[#070b14] border-slate-700 hover:border-cyan-500 text-slate-200 shadow-lg'
@@ -512,7 +511,7 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
             >
               {/* LED Ring Glow */}
               <div
-                className={`w-3.5 h-3.5 rounded-full border mb-2 transition-all ${
+                className={`w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 rounded-full border mb-1.5 sm:mb-2 transition-all ${
                   capState === 'CLOSED'
                     ? 'bg-cyan-200 border-white shadow-[0_0_12px_#ffffff]'
                     : 'bg-slate-800 border-slate-600'
@@ -520,10 +519,10 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
               />
 
               <div className="flex items-center space-x-1.5">
-                <Lock className="w-4 h-4" />
-                <span className="font-mono text-sm font-extrabold tracking-wider">CAP CLOSE</span>
+                <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="font-mono text-xs sm:text-sm font-extrabold tracking-wider">CAP CLOSE</span>
               </div>
-              <span className="font-mono text-[9px] uppercase text-cyan-200/80 mt-1 text-center font-medium">
+              <span className="font-mono text-[8px] sm:text-[9px] uppercase text-cyan-200/80 mt-0.5 sm:mt-1 text-center font-medium">
                 ENABLE AUTO
               </span>
             </button>
@@ -538,7 +537,7 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
                 motorStatus === 'RUNNING' ||
                 isProcessing
               }
-              className={`group relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
+              className={`group relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 min-h-[50px] sm:min-h-[64px] ${
                 capState === 'OPEN'
                   ? 'bg-gradient-to-b from-amber-600 to-amber-800 border-amber-300 text-white shadow-[0_0_30px_rgba(245,158,11,0.6)]'
                   : 'bg-gradient-to-b from-[#0f172a] to-[#070b14] border-slate-700 hover:border-amber-500 text-slate-200 shadow-lg'
@@ -546,7 +545,7 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
             >
               {/* LED Ring Glow */}
               <div
-                className={`w-3.5 h-3.5 rounded-full border mb-2 transition-all ${
+                className={`w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 rounded-full border mb-1.5 sm:mb-2 transition-all ${
                   capState === 'OPEN'
                     ? 'bg-amber-200 border-white shadow-[0_0_12px_#ffffff]'
                     : 'bg-slate-800 border-slate-600'
@@ -554,18 +553,18 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
               />
 
               <div className="flex items-center space-x-1.5">
-                <Unlock className="w-4 h-4" />
-                <span className="font-mono text-sm font-extrabold tracking-wider">CAP OPEN</span>
+                <Unlock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="font-mono text-xs sm:text-sm font-extrabold tracking-wider">CAP OPEN</span>
               </div>
-              <span className="font-mono text-[9px] uppercase text-amber-200/80 mt-1 text-center font-medium">
+              <span className="font-mono text-[8px] sm:text-[9px] uppercase text-amber-200/80 mt-0.5 sm:mt-1 text-center font-medium">
                 DISABLE AUTO
               </span>
             </button>
           </div>
 
           {/* Subtle Driver Notice */}
-          <div className="flex items-center space-x-2 text-[10px] font-mono text-slate-500 tracking-wide text-center">
-            <Radio className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <div className="flex items-center space-x-1.5 text-[9px] sm:text-[10px] font-mono text-slate-500 tracking-wide text-center">
+            <Radio className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-400 shrink-0" />
             <span>RAW SENSOR: {formatNumber(stats.currentRaw)} ADC UNITS</span>
           </div>
         </div>
@@ -574,7 +573,7 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
         {/* RIGHT GAUGE: LIQUID FUEL METER CLUSTER (Cols 9-12)               */}
         {/* ================================================================ */}
         <div className="lg:col-span-4 flex flex-col items-center justify-center">
-          <div className="relative w-[300px] h-[300px] sm:w-[340px] sm:h-[340px] flex items-center justify-center">
+          <div className="relative w-[260px] h-[260px] xs:w-[280px] xs:h-[280px] sm:w-[320px] sm:h-[320px] md:w-[340px] md:h-[340px] max-w-full aspect-square flex items-center justify-center">
             {/* Ambient Radial Backlight Glow (Dynamic Red for Low Fuel, Cyan for Normal) */}
             <div
               className={`absolute inset-4 rounded-full blur-2xl pointer-events-none transition-all duration-700 ${
@@ -723,30 +722,30 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
             </svg>
 
             {/* Fuel Gauge Digital Readout & Low Level Indicator (Center Lower of Dial) */}
-            <div className="absolute bottom-11 flex flex-col items-center pointer-events-none">
+            <div className="absolute bottom-8 xs:bottom-10 sm:bottom-11 flex flex-col items-center pointer-events-none">
               {/* Low Fuel Warning Indicator */}
               {isLowFuel ? (
-                <div className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-rose-950/90 border border-rose-500 text-rose-300 font-mono text-[10px] font-extrabold animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.6)] mb-1">
-                  <AlertTriangle className="w-3 h-3 text-rose-400" />
+                <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-rose-950/90 border border-rose-500 text-rose-300 font-mono text-[9px] xs:text-[10px] font-extrabold animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.6)] mb-0.5 sm:mb-1">
+                  <AlertTriangle className="w-2.5 h-2.5 xs:w-3 xs:h-3 text-rose-400" />
                   <span>LOW FUEL LEVEL</span>
                 </div>
               ) : (
-                <div className="flex items-center space-x-1 text-cyan-400 font-mono text-[10px] uppercase font-bold tracking-widest mb-1">
-                  <Fuel className="w-3.5 h-3.5" />
+                <div className="flex items-center space-x-1 text-cyan-400 font-mono text-[9px] xs:text-[10px] uppercase font-bold tracking-widest mb-0.5 sm:mb-1">
+                  <Fuel className="w-3 h-3 xs:w-3.5 xs:h-3.5" />
                   <span>FUEL VOLUME</span>
                 </div>
               )}
 
               {/* Digital Volume Display in ml */}
-              <div className="flex items-baseline space-x-1 bg-black/85 px-3 py-1 rounded-md border border-slate-700/80 shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)]">
-                <span className="font-mono text-2xl font-black text-white tracking-tight">
+              <div className="flex items-baseline space-x-1 bg-black/85 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-md border border-slate-700/80 shadow-[inset_0_2px_8px_rgba(0,0,0,0.8)]">
+                <span className="font-mono text-xl sm:text-2xl font-black text-white tracking-tight">
                   {currentVolumeMl !== null ? formatNumber(currentVolumeMl, 1) : '—'}
                 </span>
-                <span className="font-mono text-xs font-bold text-cyan-400 uppercase">ml</span>
+                <span className="font-mono text-[10px] sm:text-xs font-bold text-cyan-400 uppercase">ml</span>
               </div>
 
               {/* Percentage & Max Capacity */}
-              <div className="mt-1 flex items-center space-x-2 font-mono text-[10px]">
+              <div className="mt-0.5 sm:mt-1 flex items-center space-x-1.5 sm:space-x-2 font-mono text-[9px] sm:text-[10px]">
                 <span
                   className={`font-extrabold ${
                     isLowFuel ? 'text-rose-400' : 'text-emerald-400'
@@ -760,15 +759,15 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
             </div>
           </div>
 
-          <span className="font-mono text-xs font-bold text-slate-400 tracking-wider mt-2 uppercase">
+          <span className="font-mono text-[11px] sm:text-xs font-bold text-slate-400 tracking-wider mt-1.5 sm:mt-2 uppercase text-center">
             LIQUID FUEL METER (LIVE)
           </span>
         </div>
       </div>
 
       {/* Bottom Automotive Status Strip */}
-      <div className="relative z-10 pt-4 border-t border-cyan-900/30 flex flex-wrap items-center justify-between gap-4 font-mono text-[11px] text-slate-400">
-        <div className="flex items-center space-x-4">
+      <div className="relative z-10 pt-3 sm:pt-4 border-t border-cyan-900/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 sm:gap-4 font-mono text-[10px] sm:text-[11px] text-slate-400">
+        <div className="flex items-center space-x-3 sm:space-x-4">
           <div className="flex items-center space-x-1.5">
             <span className="text-slate-500 uppercase">CALIBRATION:</span>
             <span
@@ -784,8 +783,8 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
 
           <span className="text-slate-700 hidden sm:inline">|</span>
 
-          <div className="flex items-center space-x-1.5 hidden sm:flex">
-            <span className="text-slate-500 uppercase">MOTOR STATE:</span>
+          <div className="flex items-center space-x-1.5">
+            <span className="text-slate-500 uppercase">MOTOR:</span>
             <span
               className={`font-semibold ${
                 motorStatus === 'RUNNING'
@@ -800,9 +799,9 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-2 text-slate-500 text-[10px]">
-          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 inline-block animate-ping" />
-          <span>REAL-TIME HARDWARE INSTRUMENT TELEMETRY</span>
+        <div className="flex items-center space-x-2 text-slate-500 text-[9px] sm:text-[10px]">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 inline-block animate-ping shrink-0" />
+          <span>REAL-TIME HARDWARE TELEMETRY</span>
         </div>
       </div>
     </div>

@@ -50,13 +50,13 @@ export const MotorConfigPage: React.FC<MotorConfigPageProps> = ({
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="panel-glass rounded-xl p-6 border-slate-800 flex flex-wrap items-center justify-between gap-4 font-mono text-xs">
+      <div className="panel-glass rounded-xl p-4 sm:p-6 border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 font-mono text-xs">
         <div className="flex items-center space-x-3">
-          <div className="p-2.5 rounded-lg bg-sky-950/60 border border-sky-800/40 text-sky-400 shadow-glow-blue">
+          <div className="p-2.5 rounded-lg bg-sky-950/60 border border-sky-800/40 text-sky-400 shadow-glow-blue shrink-0">
             <Sliders className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-sm font-bold uppercase text-white tracking-wider">
+            <h2 className="text-xs sm:text-sm font-bold uppercase text-white tracking-wider">
               Dual Cap Open & Closed Motor Configuration
             </h2>
             <p className="text-slate-400 text-xs">
@@ -65,21 +65,21 @@ export const MotorConfigPage: React.FC<MotorConfigPageProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             onClick={handleExport}
             disabled={profiles.length === 0}
-            className="px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 font-bold flex items-center space-x-1.5 transition-colors disabled:opacity-40"
+            className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 font-bold flex items-center justify-center space-x-1.5 transition-colors disabled:opacity-40 min-h-[40px]"
           >
             <Download className="w-4 h-4" />
-            <span>Export Profiles</span>
+            <span>Export</span>
           </button>
           <button
             onClick={handleOpenAdd}
-            className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold flex items-center space-x-2 shadow-glow-cyan transition-all"
+            className="flex-1 sm:flex-none px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold flex items-center justify-center space-x-2 shadow-glow-cyan transition-all min-h-[40px]"
           >
             <Plus className="w-4 h-4" />
-            <span>Add Volume Profile</span>
+            <span>Add Profile</span>
           </button>
         </div>
       </div>
