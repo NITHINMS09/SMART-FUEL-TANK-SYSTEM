@@ -12,6 +12,8 @@ export type StabilityStatus = 'STABLE' | 'UNSTABLE' | 'WAITING FOR READINGS';
 
 export type OperatingMode = 'MANUAL' | 'AUTOMATIC';
 
+export type AutomationStatus = 'IDLE' | 'MONITORING' | 'ADJUSTING' | 'STABLE' | 'UNSTABLE' | 'ERROR';
+
 export type MotorDirection = 'CW' | 'CCW';
 
 export interface RawReading {
@@ -76,7 +78,7 @@ export interface MotorProfile {
 }
 
 export interface LastMotorOperation {
-  type: 'OPEN' | 'CLOSE' | 'AUTO_CLOSE' | 'EMERGENCY_STOP';
+  type: 'OPEN' | 'CLOSE' | 'AUTO_CLOSE' | 'ADJUST' | 'MOVE_TO' | 'EMERGENCY_STOP';
   degrees: number;
   direction: MotorDirection | 'NONE';
   timestamp: number;
@@ -87,13 +89,35 @@ export interface LastMotorOperation {
 export interface AutomationEvent {
   id: string;
   timestamp: number;
-  type: 'AUTO_CLOSE' | 'CAP_OPEN' | 'CAP_CLOSED' | 'MEASURE_VOLUME' | 'EMERGENCY_STOP';
+  type: 'AUTO_CLOSE' | 'AUTO_ADJUST' | 'CAP_OPEN' | 'CAP_CLOSED' | 'MEASURE_VOLUME' | 'EMERGENCY_STOP';
   mode: OperatingMode;
   volumeMl: number | null;
   degrees: number | null;
   direction: MotorDirection | 'NONE';
   status: 'SUCCESS' | 'FAILED' | 'ABORTED';
   details: string;
+}
+
+export interface AutomationFeedbackState {
+  mode: OperatingMode;
+  status: AutomationStatus;
+  liveRaw: number | null;
+  filteredRaw: number | null;
+  calculatedVolumeMl: number | null;
+  currentMotorPosition: number;
+  targetMotorPosition: number;
+  requiredAdjustment: number;
+  motorDirection: MotorDirection | 'IDLE';
+  lastAdjustmentTime: number | null;
+  lastAdjustmentDetails: string | null;
+  angleDeadband: number;
+  volumeDeadband: number;
+  minAdjustmentInterval: number;
+  maxMotorAngle: number;
+  minMotorAngle: number;
+  isMotorMoving: boolean;
+  stability: StabilityStatus;
+  errorMessage: string | null;
 }
 
 export interface DeviceSettings {

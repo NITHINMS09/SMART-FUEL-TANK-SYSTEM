@@ -219,5 +219,76 @@ export class AutomationService {
       };
     }
   }
+
+  /**
+   * Execute relative motor adjustment for continuous feedback control loop
+   */
+  static async executeAdjustment(
+    degrees: number,
+    direction: MotorDirection,
+    volumeMl: number,
+    targetDegrees: number
+  ): Promise<AutomationEvent> {
+    try {
+      const roundedDeg = Math.round(degrees);
+      await serialService.sendCommand(`ADJUST,${roundedDeg},${direction}`);
+
+      return {
+        id: Math.random().toString(36).substring(2, 9),
+        timestamp: Date.now(),
+        type: 'AUTO_ADJUST',
+        mode: 'AUTOMATIC',
+        volumeMl,
+        degrees: roundedDeg,
+        direction,
+        status: 'SUCCESS',
+        details: `Auto adjustment: ${roundedDeg}° ${direction} to reach target ${targetDegrees}° (${Math.round(volumeMl)} ml)`,
+      };
+    } catch (err: any) {
+      return {
+        id: Math.random().toString(36).substring(2, 9),
+        timestamp: Date.now(),
+        type: 'AUTO_ADJUST',
+        mode: 'AUTOMATIC',
+        volumeMl,
+        degrees,
+        direction,
+        status: 'FAILED',
+        details: `Auto adjustment failed: ${err.message}`,
+      };
+    }
+  }
+
+  /**
+   * Emergency stop execution
+   */
+  static async executeEmergencyStop(): Promise<AutomationEvent> {
+    try {
+      await serialService.emergencyStop();
+      return {
+        id: Math.random().toString(36).substring(2, 9),
+        timestamp: Date.now(),
+        type: 'EMERGENCY_STOP',
+        mode: 'MANUAL',
+        volumeMl: null,
+        degrees: null,
+        direction: 'NONE',
+        status: 'SUCCESS',
+        details: 'Emergency motor stop triggered. Stepper coils de-energized.',
+      };
+    } catch (err: any) {
+      return {
+        id: Math.random().toString(36).substring(2, 9),
+        timestamp: Date.now(),
+        type: 'EMERGENCY_STOP',
+        mode: 'MANUAL',
+        volumeMl: null,
+        degrees: null,
+        direction: 'NONE',
+        status: 'FAILED',
+        details: `Emergency stop error: ${err.message}`,
+      };
+    }
+  }
 }
 

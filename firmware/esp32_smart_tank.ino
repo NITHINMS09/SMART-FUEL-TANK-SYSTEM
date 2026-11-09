@@ -64,6 +64,17 @@ int motorProfileCount = 0;
 volatile bool isMotorRunning = false;
 volatile bool emergencyStopFlag = false;
 
+// Non-blocking stepper motor driver state
+long motorStepsRemaining = 0;
+bool motorDirectionCW = true;
+unsigned long motorStepDelayMicros = 500; // Half-period (500us HIGH, 500us LOW = 1000us/step = 1000 steps/sec)
+unsigned long lastStepTimeMicros = 0;
+bool motorStepPinState = false;
+
+// Commanded motor position tracking (absolute degrees from calibrated zero reference)
+long currentMotorSteps = 0;
+float currentMotorAngle = 0.0;
+
 // Sliding raw readings window
 const int SAMPLE_WINDOW = 20;
 long rawSamples[SAMPLE_WINDOW];
@@ -86,7 +97,9 @@ bool saveCalibrationToNVS();
 void loadCalibrationFromNVS();
 bool saveProfilesToNVS();
 void loadProfilesFromNVS();
+void startMotorMove(int degrees, bool isCW, int speedDelayMicros = 500);
 void stepMotor(int degrees, bool isCW, int speedDelayMicros = 500);
+void updateMotor();
 float calculateEstimatedVolume(long raw);
 int findProfileCloseAngle(float volumeMl, int& outDirection);
 
@@ -136,7 +149,10 @@ void loop() {
     }
   }
 
-  // 2. Continuous raw reading acquisition and streaming
+  // 2. Non-blocking stepper motor driver pulse generation & position tracking
+  updateMotor();
+
+  // 3. Continuous raw reading acquisition and streaming (uninterrupted during movement)
   unsigned long now = millis();
   if (now - lastRawStreamTime >= RAW_STREAM_INTERVAL_MS) {
     lastRawStreamTime = now;
@@ -205,40 +221,92 @@ long readHX711Raw() {
 }
 
 // ============================================================================
-// STEPPER MOTOR DRIVER ACTUATION
+// NON-BLOCKING STEPPER MOTOR DRIVER ACTUATION & FEEDBACK CONTROL
 // ============================================================================
-void stepMotor(int degrees, bool isCW, int speedDelayMicros) {
-  if (degrees <= 0) return;
+void startMotorMove(int degrees, bool isCW, int speedDelayMicros) {
+  if (degrees <= 0) {
+    Serial.print("MOTOR_POS,");
+    Serial.println(currentMotorAngle, 1);
+    Serial.println("MOTOR_COMPLETED");
+    Serial.flush();
+    return;
+  }
 
-  isMotorRunning = true;
+  if (speedDelayMicros < 100) speedDelayMicros = 500;
+  motorStepDelayMicros = speedDelayMicros;
+  motorDirectionCW = isCW;
   emergencyStopFlag = false;
-  Serial.println("MOTOR_STARTED");
+
+  // 1.8 degree stepper (200 steps/rev) with 1/16 microstepping = 3200 steps/rev
+  long totalSteps = (long)(degrees * (3200.0 / 360.0));
+  if (totalSteps <= 0) totalSteps = 1;
+
+  motorStepsRemaining = totalSteps;
+  isMotorRunning = true;
+  lastStepTimeMicros = micros();
+  motorStepPinState = false;
 
   // Enable DRV8825 driver (active LOW on EN pin)
   digitalWrite(PIN_DRV_EN, LOW);
   digitalWrite(PIN_DRV_DIR, isCW ? HIGH : LOW);
+  digitalWrite(PIN_DRV_STEP, LOW);
   delayMicroseconds(20);
 
-  // Compute total steps for 1.8 degree stepper (200 steps/rev) with 1/16 microstepping = 3200 steps/rev
-  // steps = degrees * (3200 / 360) = degrees * 8.88888
-  long totalSteps = (long)(degrees * (3200.0 / 360.0));
+  Serial.println("MOTOR_STARTED");
+  Serial.flush();
+}
 
-  for (long i = 0; i < totalSteps; i++) {
-    if (emergencyStopFlag) {
-      Serial.println("ERROR,Motor execution halted by Emergency Stop");
-      break;
-    }
-    digitalWrite(PIN_DRV_STEP, HIGH);
-    delayMicroseconds(speedDelayMicros);
+void stepMotor(int degrees, bool isCW, int speedDelayMicros) {
+  // Alias for backward compatibility
+  startMotorMove(degrees, isCW, speedDelayMicros);
+}
+
+void updateMotor() {
+  if (!isMotorRunning) return;
+
+  if (emergencyStopFlag) {
+    motorStepsRemaining = 0;
+    isMotorRunning = false;
     digitalWrite(PIN_DRV_STEP, LOW);
-    delayMicroseconds(speedDelayMicros);
-    yield(); // Prevent watchdog trigger
+    digitalWrite(PIN_DRV_EN, HIGH); // Disable motor coils immediately
+    Serial.println("ERROR,Motor execution halted by Emergency Stop");
+    Serial.print("MOTOR_POS,");
+    Serial.println(currentMotorAngle, 1);
+    Serial.println("MOTOR_COMPLETED");
+    Serial.flush();
+    return;
   }
 
-  // Disable driver coils to prevent overheating
-  digitalWrite(PIN_DRV_EN, HIGH);
-  isMotorRunning = false;
-  Serial.println("MOTOR_COMPLETED");
+  if (motorStepsRemaining <= 0) {
+    isMotorRunning = false;
+    digitalWrite(PIN_DRV_STEP, LOW);
+    digitalWrite(PIN_DRV_EN, HIGH); // Disable driver coils to prevent heating
+    Serial.print("MOTOR_POS,");
+    Serial.println(currentMotorAngle, 1);
+    Serial.println("MOTOR_COMPLETED");
+    Serial.flush();
+    return;
+  }
+
+  unsigned long now = micros();
+  if (now - lastStepTimeMicros >= motorStepDelayMicros) {
+    lastStepTimeMicros = now;
+    if (!motorStepPinState) {
+      digitalWrite(PIN_DRV_STEP, HIGH);
+      motorStepPinState = true;
+    } else {
+      digitalWrite(PIN_DRV_STEP, LOW);
+      motorStepPinState = false;
+      motorStepsRemaining--;
+
+      if (motorDirectionCW) {
+        currentMotorSteps++;
+      } else {
+        currentMotorSteps--;
+      }
+      currentMotorAngle = (float)currentMotorSteps * (360.0 / 3200.0);
+    }
+  }
 }
 
 // ============================================================================
@@ -247,9 +315,15 @@ void stepMotor(int degrees, bool isCW, int speedDelayMicros) {
 void processCommand(const String& cmd) {
   if (cmd == "STOP") {
     emergencyStopFlag = true;
-    digitalWrite(PIN_DRV_EN, HIGH); // Disable motor coils immediately
     isMotorRunning = false;
+    motorStepsRemaining = 0;
+    digitalWrite(PIN_DRV_STEP, LOW);
+    digitalWrite(PIN_DRV_EN, HIGH); // Disable motor coils immediately
+    Serial.println("ERROR,Emergency Stop Triggered");
+    Serial.print("MOTOR_POS,");
+    Serial.println(currentMotorAngle, 1);
     Serial.println("MOTOR_COMPLETED");
+    Serial.flush();
     return;
   }
 
@@ -448,7 +522,7 @@ void processCommand(const String& cmd) {
     dirStr.trim();
     bool isCW = (dirStr == "CW" || dirStr == "1");
 
-    stepMotor(deg, isCW);
+    startMotorMove(deg, isCW);
     return;
   }
 
@@ -460,7 +534,57 @@ void processCommand(const String& cmd) {
     dirStr.trim();
     bool isCW = (dirStr == "CW" || dirStr == "1");
 
-    stepMotor(deg, isCW);
+    startMotorMove(deg, isCW);
+    return;
+  }
+
+  if (cmd.startsWith("ADJUST,")) {
+    // Format: ADJUST,<degrees>,<CW or CCW>
+    int idx = cmd.indexOf(',', 7);
+    if (idx != -1) {
+      int deg = cmd.substring(7, idx).toInt();
+      String dirStr = cmd.substring(idx + 1);
+      dirStr.trim();
+      bool isCW = (dirStr == "CW" || dirStr == "1");
+      startMotorMove(deg, isCW);
+    } else {
+      Serial.println("ERROR,Invalid ADJUST syntax. Use ADJUST,<degrees>,<CW|CCW>");
+    }
+    return;
+  }
+
+  if (cmd.startsWith("MOVE_TO,")) {
+    // Format: MOVE_TO,<targetDegrees>
+    float targetAngle = cmd.substring(8).toFloat();
+    float diff = targetAngle - currentMotorAngle;
+    if (abs(diff) < 0.5) {
+      Serial.print("MOTOR_POS,");
+      Serial.println(currentMotorAngle, 1);
+      Serial.println("MOTOR_COMPLETED");
+      Serial.flush();
+    } else {
+      bool isCW = diff > 0;
+      int degToMove = (int)round(abs(diff));
+      startMotorMove(degToMove, isCW);
+    }
+    return;
+  }
+
+  if (cmd.startsWith("SET_POS,")) {
+    // Format: SET_POS,<degrees> (Calibrates or zeroes motor position reference)
+    float newAngle = cmd.substring(8).toFloat();
+    currentMotorAngle = newAngle;
+    currentMotorSteps = (long)(newAngle * (3200.0 / 360.0));
+    Serial.print("MOTOR_POS,");
+    Serial.println(currentMotorAngle, 1);
+    Serial.flush();
+    return;
+  }
+
+  if (cmd == "GET_POS") {
+    Serial.print("MOTOR_POS,");
+    Serial.println(currentMotorAngle, 1);
+    Serial.flush();
     return;
   }
 
@@ -485,8 +609,8 @@ void processCommand(const String& cmd) {
     Serial.print("AUTO_ROTATION,");
     Serial.println(targetAngle);
 
-    // 4. Actuate motor
-    stepMotor(targetAngle, dir == 1);
+    // 4. Actuate motor non-blockingly
+    startMotorMove(targetAngle, dir == 1);
     return;
   }
 

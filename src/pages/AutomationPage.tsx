@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   AutomationEvent,
+  AutomationFeedbackState,
   CalibrationPoint,
   ConnectionState,
   MotorProfile,
@@ -8,15 +9,16 @@ import {
 } from '../types';
 import { AutomationControl } from '../components/automation/AutomationControl';
 import { AutomationHistory } from '../components/automation/AutomationHistory';
-import { AutoCloseProgress } from '../services/automationService';
 
 interface AutomationPageProps {
   mode: OperatingMode;
   onModeChange: (mode: OperatingMode) => void;
-  isRunning: boolean;
-  progress: AutoCloseProgress;
+  feedbackState: AutomationFeedbackState;
   onTriggerCapClose: () => Promise<void>;
   onTriggerCapOpen: () => Promise<void>;
+  onEmergencyStop: () => Promise<void>;
+  onZeroPosition: () => Promise<void>;
+  onUpdateConfig: (updates: Partial<any>) => void;
   events: AutomationEvent[];
   onClearHistory: () => void;
   calibrationPoints: CalibrationPoint[];
@@ -27,10 +29,12 @@ interface AutomationPageProps {
 export const AutomationPage: React.FC<AutomationPageProps> = ({
   mode,
   onModeChange,
-  isRunning,
-  progress,
+  feedbackState,
   onTriggerCapClose,
   onTriggerCapOpen,
+  onEmergencyStop,
+  onZeroPosition,
+  onUpdateConfig,
   events,
   onClearHistory,
   calibrationPoints,
@@ -39,14 +43,16 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
 }) => {
   return (
     <div className="space-y-6">
-      {/* Control Panel */}
+      {/* Control Panel & Continuous Automation Dashboard */}
       <AutomationControl
         mode={mode}
         onModeChange={onModeChange}
-        isRunning={isRunning}
-        progress={progress}
+        feedbackState={feedbackState}
         onTriggerCapClose={onTriggerCapClose}
         onTriggerCapOpen={onTriggerCapOpen}
+        onEmergencyStop={onEmergencyStop}
+        onZeroPosition={onZeroPosition}
+        onUpdateConfig={onUpdateConfig}
         calibrationPoints={calibrationPoints}
         motorProfiles={motorProfiles}
         connectionState={connectionState}
@@ -57,4 +63,3 @@ export const AutomationPage: React.FC<AutomationPageProps> = ({
     </div>
   );
 };
-

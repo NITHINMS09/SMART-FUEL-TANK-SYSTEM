@@ -90,6 +90,25 @@ export function interpolateClosedMotorAction(
 }
 
 /**
+ * Calculates clamped target motor angle in degrees for continuous automatic adjustment
+ */
+export function calculateTargetMotorAngle(
+  volumeMl: number,
+  profiles: MotorProfile[],
+  minAngle: number = 0,
+  maxAngle: number = 360
+): { targetAngle: number; interpolated: boolean; nearestVolume: number } | null {
+  const result = interpolateClosedMotorAction(volumeMl, profiles);
+  if (!result) return null;
+  const clampedAngle = Math.max(minAngle, Math.min(maxAngle, result.degrees));
+  return {
+    targetAngle: clampedAngle,
+    interpolated: result.interpolated,
+    nearestVolume: result.nearestVolume,
+  };
+}
+
+/**
  * Format ESP32 serial command to save motor profile:
  * PROFILE,<ml>,<openDegrees>,<openCW>,<closeDegrees>,<closeCW>
  * Where openCW and closeCW are 1 (CW) or 0 (CCW)

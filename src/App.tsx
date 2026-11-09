@@ -91,10 +91,21 @@ export function App() {
     history: automationHistory,
     isRunning: isAutomationRunning,
     progress: autoCloseProgress,
+    feedbackState: automationFeedbackState,
+    updateConfig: updateAutomationConfig,
+    triggerEmergencyStop,
+    zeroMotorPosition,
     triggerCapClose,
     triggerCapOpen,
     clearHistory: clearAutomationHistory,
-  } = useAutomation(readings, points, profiles);
+  } = useAutomation(
+    readings,
+    stats,
+    volumeInterpolation,
+    points,
+    profiles,
+    connectionState
+  );
 
   // Synchronize stability threshold with settings
   useEffect(() => {
@@ -185,6 +196,9 @@ export function App() {
               onTriggerCapClose={triggerCapClose}
               onTriggerCapOpen={() => triggerCapOpen(90, 'CW')}
               isAutomationRunning={isAutomationRunning}
+              automationFeedbackState={automationFeedbackState}
+              onModeChange={setMode}
+              onEmergencyStop={triggerEmergencyStop}
             />
           )}
 
@@ -257,10 +271,12 @@ export function App() {
             <AutomationPage
               mode={mode}
               onModeChange={setMode}
-              isRunning={isAutomationRunning}
-              progress={autoCloseProgress}
+              feedbackState={automationFeedbackState}
               onTriggerCapClose={triggerCapClose}
               onTriggerCapOpen={() => triggerCapOpen(90, 'CW')}
+              onEmergencyStop={triggerEmergencyStop}
+              onZeroPosition={zeroMotorPosition}
+              onUpdateConfig={updateAutomationConfig}
               events={automationHistory}
               onClearHistory={clearAutomationHistory}
               calibrationPoints={points}

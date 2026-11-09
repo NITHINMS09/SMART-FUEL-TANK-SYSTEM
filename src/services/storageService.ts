@@ -6,6 +6,8 @@ const STORAGE_KEYS = {
   SETTINGS: 'smart_tank_settings',
   AUTOMATION_HISTORY: 'smart_tank_automation_history',
   LAST_BACKUP: 'smart_tank_last_backup_timestamp',
+  MOTOR_POSITION: 'smart_tank_motor_position',
+  AUTOMATION_CONFIG: 'smart_tank_automation_config',
 };
 
 export const DEFAULT_SETTINGS: DeviceSettings = {
@@ -121,6 +123,74 @@ export class StorageService {
       localStorage.setItem(STORAGE_KEYS.AUTOMATION_HISTORY, JSON.stringify(history.slice(-100))); // keep latest 100
     } catch (e) {
       console.error('Failed to save automation history:', e);
+    }
+  }
+
+  /**
+   * Load current motor commanded position (in degrees)
+   */
+  static loadMotorPosition(): number {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.MOTOR_POSITION);
+      if (data === null) return 0;
+      const parsed = parseFloat(data);
+      return isNaN(parsed) ? 0 : parsed;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Save current motor commanded position (in degrees)
+   */
+  static saveMotorPosition(degrees: number): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.MOTOR_POSITION, degrees.toString());
+    } catch (e) {
+      console.error('Failed to save motor position:', e);
+    }
+  }
+
+  /**
+   * Load automation loop configuration
+   */
+  static loadAutomationConfig(): {
+    angleDeadband: number;
+    volumeDeadband: number;
+    minAdjustmentInterval: number;
+    maxMotorAngle: number;
+    minMotorAngle: number;
+  } {
+    const defaults = {
+      angleDeadband: 2.0,
+      volumeDeadband: 5.0,
+      minAdjustmentInterval: 1500,
+      maxMotorAngle: 360,
+      minMotorAngle: 0,
+    };
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.AUTOMATION_CONFIG);
+      if (!data) return defaults;
+      return { ...defaults, ...JSON.parse(data) };
+    } catch {
+      return defaults;
+    }
+  }
+
+  /**
+   * Save automation loop configuration
+   */
+  static saveAutomationConfig(config: {
+    angleDeadband: number;
+    volumeDeadband: number;
+    minAdjustmentInterval: number;
+    maxMotorAngle: number;
+    minMotorAngle: number;
+  }): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.AUTOMATION_CONFIG, JSON.stringify(config));
+    } catch (e) {
+      console.error('Failed to save automation config:', e);
     }
   }
 

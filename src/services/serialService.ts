@@ -18,6 +18,7 @@ export type SerialEvent =
   | { type: 'AUTO_ROTATION'; degrees: number }
   | { type: 'MOTOR_STARTED' }
   | { type: 'MOTOR_COMPLETED' }
+  | { type: 'MOTOR_POS'; degrees: number }
   | { type: 'SYSTEM_READY' }
   | { type: 'ERROR'; message: string }
   | { type: 'CAL_POINT'; ml: number; average: number; minimum: number; maximum: number; range: number }
@@ -547,6 +548,12 @@ export class SerialService {
       logItem.parsedType = 'MOTOR_COMPLETED';
       this.isMotorExecuting = false;
       this.notify({ type: 'MOTOR_COMPLETED' });
+    } else if (cmd === 'MOTOR_POS') {
+      const degrees = parseFloat(parts[1]);
+      logItem.parsedType = 'MOTOR_POS';
+      if (!isNaN(degrees)) {
+        this.notify({ type: 'MOTOR_POS', degrees });
+      }
     } else if (cmd === 'SYSTEM_READY') {
       logItem.parsedType = 'SYSTEM_READY';
       this.notify({ type: 'SYSTEM_READY' });
@@ -595,7 +602,9 @@ export class SerialService {
     const trimmed = command.trim();
     const isMotor = trimmed.startsWith('OPEN') ||
                     trimmed.startsWith('CLOSE') ||
-                    trimmed.startsWith('AUTO_CLOSE');
+                    trimmed.startsWith('AUTO_CLOSE') ||
+                    trimmed.startsWith('ADJUST') ||
+                    trimmed.startsWith('MOVE_TO');
 
     if (isMotor && this.isMotorExecuting) {
       throw new Error('Motor is currently executing another operation. Please wait or press STOP.');

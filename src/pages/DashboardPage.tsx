@@ -15,6 +15,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import {
+  AutomationFeedbackState,
   CalibrationPoint,
   ConnectionState,
   HX711Status,
@@ -49,6 +50,9 @@ interface DashboardPageProps {
   onTriggerCapClose: () => Promise<void>;
   onTriggerCapOpen: () => Promise<void>;
   isAutomationRunning: boolean;
+  automationFeedbackState?: AutomationFeedbackState;
+  onModeChange?: (mode: OperatingMode) => void;
+  onEmergencyStop?: () => Promise<void>;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -68,6 +72,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onTriggerCapClose,
   onTriggerCapOpen,
   isAutomationRunning,
+  automationFeedbackState,
+  onModeChange,
+  onEmergencyStop,
 }) => {
   const [isRetrying, setIsRetrying] = React.useState(false);
   const confirmedCalPoints = calibrationPoints.filter((p) => p.status === 'CONFIRMED');
@@ -201,6 +208,111 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Active Automatic Mode Continuous Feedback Control Ribbon */}
+      {mode === 'AUTOMATIC' && automationFeedbackState && (
+        <div className="panel-glass rounded-xl p-4 border-cyan-500/50 bg-[#070e1c] font-mono text-xs space-y-3 shadow-glow-cyan animate-fadeIn">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cyan-900/60 pb-2.5">
+            <div className="flex items-center space-x-2.5">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
+              </span>
+              <span className="font-bold uppercase tracking-wider text-white text-xs">
+                Automatic Mode Active: Continuous Closed-Loop Feedback
+              </span>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                  automationFeedbackState.status === 'ADJUSTING'
+                    ? 'bg-amber-950/80 border-amber-600 text-amber-300'
+                    : automationFeedbackState.status === 'STABLE'
+                    ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
+                    : automationFeedbackState.status === 'UNSTABLE'
+                    ? 'bg-amber-950/60 border-amber-500 text-amber-300'
+                    : 'bg-cyan-950/80 border-cyan-600 text-cyan-300'
+                }`}
+              >
+                {automationFeedbackState.status}
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              {onModeChange && (
+                <button
+                  type="button"
+                  onClick={() => onModeChange('MANUAL')}
+                  className="px-3 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold transition-all"
+                >
+                  Switch to Manual
+                </button>
+              )}
+              {onEmergencyStop && (
+                <button
+                  type="button"
+                  onClick={onEmergencyStop}
+                  className="px-3.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold tracking-wider shadow-sm transition-all"
+                >
+                  STOP
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 text-center">
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Live Volume</span>
+              <span className="text-emerald-400 font-bold text-sm">
+                {automationFeedbackState.calculatedVolumeMl !== null
+                  ? `${formatNumber(automationFeedbackState.calculatedVolumeMl, 1)} ml`
+                  : '—'}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Current Motor Pos</span>
+              <span className="text-white font-bold text-sm">
+                {formatDegrees(automationFeedbackState.currentMotorPosition)}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Target Motor Pos</span>
+              <span className="text-sky-300 font-bold text-sm">
+                {formatDegrees(automationFeedbackState.targetMotorPosition)}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Required Δ</span>
+              <span
+                className={`font-bold text-sm ${
+                  Math.abs(automationFeedbackState.requiredAdjustment) < automationFeedbackState.angleDeadband
+                    ? 'text-emerald-400'
+                    : 'text-amber-400'
+                }`}
+              >
+                {automationFeedbackState.requiredAdjustment > 0
+                  ? `+${automationFeedbackState.requiredAdjustment}`
+                  : automationFeedbackState.requiredAdjustment}°
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Motor Direction</span>
+              <span className="text-cyan-300 font-bold text-sm">
+                {automationFeedbackState.motorDirection}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Filtered ADC</span>
+              <span className="text-slate-300 font-bold text-sm">
+                {formatNumber(automationFeedbackState.filteredRaw)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Metric Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -358,6 +470,111 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
+      {/* Active Automatic Mode Continuous Feedback Control Ribbon */}
+      {mode === 'AUTOMATIC' && automationFeedbackState && (
+        <div className="panel-glass rounded-xl p-4 border-cyan-500/50 bg-[#070e1c] font-mono text-xs space-y-3 shadow-glow-cyan animate-fadeIn">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cyan-900/60 pb-2.5">
+            <div className="flex items-center space-x-2.5">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
+              </span>
+              <span className="font-bold uppercase tracking-wider text-white text-xs">
+                Automatic Mode Active: Continuous Closed-Loop Feedback
+              </span>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                  automationFeedbackState.status === 'ADJUSTING'
+                    ? 'bg-amber-950/80 border-amber-600 text-amber-300'
+                    : automationFeedbackState.status === 'STABLE'
+                    ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
+                    : automationFeedbackState.status === 'UNSTABLE'
+                    ? 'bg-amber-950/60 border-amber-500 text-amber-300'
+                    : 'bg-cyan-950/80 border-cyan-600 text-cyan-300'
+                }`}
+              >
+                {automationFeedbackState.status}
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              {onModeChange && (
+                <button
+                  type="button"
+                  onClick={() => onModeChange('MANUAL')}
+                  className="px-3 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold transition-all"
+                >
+                  Switch to Manual
+                </button>
+              )}
+              {onEmergencyStop && (
+                <button
+                  type="button"
+                  onClick={onEmergencyStop}
+                  className="px-3.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold tracking-wider shadow-sm transition-all"
+                >
+                  STOP
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 text-center">
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Live Volume</span>
+              <span className="text-emerald-400 font-bold text-sm">
+                {automationFeedbackState.calculatedVolumeMl !== null
+                  ? `${formatNumber(automationFeedbackState.calculatedVolumeMl, 1)} ml`
+                  : '—'}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Current Motor Pos</span>
+              <span className="text-white font-bold text-sm">
+                {formatDegrees(automationFeedbackState.currentMotorPosition)}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Target Motor Pos</span>
+              <span className="text-sky-300 font-bold text-sm">
+                {formatDegrees(automationFeedbackState.targetMotorPosition)}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Required Δ</span>
+              <span
+                className={`font-bold text-sm ${
+                  Math.abs(automationFeedbackState.requiredAdjustment) < automationFeedbackState.angleDeadband
+                    ? 'text-emerald-400'
+                    : 'text-amber-400'
+                }`}
+              >
+                {automationFeedbackState.requiredAdjustment > 0
+                  ? `+${automationFeedbackState.requiredAdjustment}`
+                  : automationFeedbackState.requiredAdjustment}°
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Motor Direction</span>
+              <span className="text-cyan-300 font-bold text-sm">
+                {automationFeedbackState.motorDirection}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Filtered ADC</span>
+              <span className="text-slate-300 font-bold text-sm">
+                {formatNumber(automationFeedbackState.filteredRaw)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Fast Action Quick-Bar */}
       <div className="panel-glass rounded-xl p-5 border-slate-800 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
@@ -394,6 +611,111 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Active Automatic Mode Continuous Feedback Control Ribbon */}
+      {mode === 'AUTOMATIC' && automationFeedbackState && (
+        <div className="panel-glass rounded-xl p-4 border-cyan-500/50 bg-[#070e1c] font-mono text-xs space-y-3 shadow-glow-cyan animate-fadeIn">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cyan-900/60 pb-2.5">
+            <div className="flex items-center space-x-2.5">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
+              </span>
+              <span className="font-bold uppercase tracking-wider text-white text-xs">
+                Automatic Mode Active: Continuous Closed-Loop Feedback
+              </span>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                  automationFeedbackState.status === 'ADJUSTING'
+                    ? 'bg-amber-950/80 border-amber-600 text-amber-300'
+                    : automationFeedbackState.status === 'STABLE'
+                    ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
+                    : automationFeedbackState.status === 'UNSTABLE'
+                    ? 'bg-amber-950/60 border-amber-500 text-amber-300'
+                    : 'bg-cyan-950/80 border-cyan-600 text-cyan-300'
+                }`}
+              >
+                {automationFeedbackState.status}
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              {onModeChange && (
+                <button
+                  type="button"
+                  onClick={() => onModeChange('MANUAL')}
+                  className="px-3 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold transition-all"
+                >
+                  Switch to Manual
+                </button>
+              )}
+              {onEmergencyStop && (
+                <button
+                  type="button"
+                  onClick={onEmergencyStop}
+                  className="px-3.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold tracking-wider shadow-sm transition-all"
+                >
+                  STOP
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 text-center">
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Live Volume</span>
+              <span className="text-emerald-400 font-bold text-sm">
+                {automationFeedbackState.calculatedVolumeMl !== null
+                  ? `${formatNumber(automationFeedbackState.calculatedVolumeMl, 1)} ml`
+                  : '—'}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Current Motor Pos</span>
+              <span className="text-white font-bold text-sm">
+                {formatDegrees(automationFeedbackState.currentMotorPosition)}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Target Motor Pos</span>
+              <span className="text-sky-300 font-bold text-sm">
+                {formatDegrees(automationFeedbackState.targetMotorPosition)}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Required Δ</span>
+              <span
+                className={`font-bold text-sm ${
+                  Math.abs(automationFeedbackState.requiredAdjustment) < automationFeedbackState.angleDeadband
+                    ? 'text-emerald-400'
+                    : 'text-amber-400'
+                }`}
+              >
+                {automationFeedbackState.requiredAdjustment > 0
+                  ? `+${automationFeedbackState.requiredAdjustment}`
+                  : automationFeedbackState.requiredAdjustment}°
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Motor Direction</span>
+              <span className="text-cyan-300 font-bold text-sm">
+                {automationFeedbackState.motorDirection}
+              </span>
+            </div>
+
+            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Filtered ADC</span>
+              <span className="text-slate-300 font-bold text-sm">
+                {formatNumber(automationFeedbackState.filteredRaw)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
