@@ -10,6 +10,7 @@
     "dev": "vite --port 3000 --host",
     "build": "tsc && vite build",
     "preview": "vite preview --port 3000",
+    "start": "node server/server.js",
     "server": "node server/server.js"
   },
   "dependencies": {
