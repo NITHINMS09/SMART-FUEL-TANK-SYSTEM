@@ -622,40 +622,101 @@ export const AutomationControl: React.FC<AutomationControlProps> = ({
         </div>
       )}
 
-      {/* 5. Manual Mode Fallback Controls (Visible in Manual Mode) */}
-      {mode === 'MANUAL' && (
-        <div className="panel-glass rounded-xl p-5 border-slate-800 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-            <span className="text-xs font-bold uppercase text-white flex items-center space-x-1.5">
-              <SlidersHorizontal className="w-4 h-4 text-cyan-400" />
-              <span>Manual Jog Controls</span>
+      {/* 5. Automatic Cap Control Buttons & Profile Execution Status */}
+      <div className="panel-glass rounded-xl p-5 border-slate-800 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-2">
+          <div className="flex items-center space-x-2">
+            <Cpu className="w-4 h-4 text-cyan-400" />
+            <span className="font-bold uppercase text-white text-xs">
+              Automatic Cap Actuation (Profile-Driven)
             </span>
-            <span className="text-[10px] text-slate-400">Direct Stepper Actuation</span>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <button
-              type="button"
-              onClick={onTriggerCapClose}
-              disabled={!isConnected || isMotorMoving}
-              className="py-3 px-4 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-700/60 text-cyan-300 font-bold flex items-center justify-center space-x-2 transition-all disabled:opacity-40"
-            >
-              <Lock className="w-4 h-4" />
-              <span>Manual Cap Close (180° CCW)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onTriggerCapOpen}
-              disabled={!isConnected || isMotorMoving}
-              className="py-3 px-4 rounded-xl bg-sky-950/80 hover:bg-sky-900 border border-sky-700/60 text-sky-300 font-bold flex items-center justify-center space-x-2 transition-all disabled:opacity-40"
-            >
-              <Unlock className="w-4 h-4" />
-              <span>Manual Cap Open (90° CW)</span>
-            </button>
-          </div>
+          <span className="text-[10px] text-slate-400">
+            Fresh Load-Cell Sample → Volume Calculation → Profile Angle & Direction → Motor Actuation
+          </span>
         </div>
-      )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={onTriggerCapOpen}
+            disabled={!isConnected || isMotorMoving}
+            className="py-3.5 px-4 rounded-xl bg-sky-950/80 hover:bg-sky-900 active:scale-95 border border-sky-600/60 text-sky-300 font-bold flex items-center justify-center space-x-2.5 shadow-glow-blue transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+            title="Sample load cell, determine volume, select configured OPEN profile, and execute motor rotation"
+          >
+            <Unlock className="w-4 h-4" />
+            <span>CAP OPEN (AUTOMATIC PROFILE)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onTriggerCapClose}
+            disabled={!isConnected || isMotorMoving}
+            className="py-3.5 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-slate-950 font-extrabold flex items-center justify-center space-x-2.5 shadow-glow-cyan transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+            title="Sample load cell, determine volume, select configured CLOSE profile, and execute motor rotation"
+          >
+            <Lock className="w-4 h-4 fill-current" />
+            <span>CAP CLOSE (AUTOMATIC PROFILE)</span>
+          </button>
+        </div>
+
+        {/* Selected Profile Readout Details */}
+        {feedbackState.capControl && (
+          <div className="bg-[#050a14] p-3 rounded-lg border border-slate-800 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center text-xs">
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Liquid Volume</span>
+              <span className="text-emerald-400 font-bold block mt-0.5 truncate">
+                {feedbackState.capControl.calculatedVolumeMl !== null
+                  ? `${formatNumber(feedbackState.capControl.calculatedVolumeMl, 1)} ml`
+                  : '—'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Fresh Raw Reading</span>
+              <span className="text-white font-bold block mt-0.5 truncate">
+                {formatNumber(feedbackState.capControl.currentRaw)}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Selected Profile</span>
+              <span
+                className="text-sky-300 font-bold truncate block mt-0.5 text-[11px]"
+                title={feedbackState.capControl.selectedProfile || 'Awaiting Action'}
+              >
+                {feedbackState.capControl.selectedProfile || 'None'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Configured Angle</span>
+              <span className="text-cyan-300 font-bold block mt-0.5 truncate">
+                {feedbackState.capControl.selectedDegrees !== null
+                  ? formatDegrees(feedbackState.capControl.selectedDegrees)
+                  : '—'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Direction</span>
+              <span className="text-white font-bold block mt-0.5 truncate">
+                {feedbackState.capControl.selectedDirection || '—'}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Status</span>
+              <span
+                className={`font-bold block mt-0.5 truncate text-[11px] ${
+                  isMotorMoving
+                    ? 'text-amber-400 animate-pulse'
+                    : feedbackState.capControl.stage === 'ERROR'
+                    ? 'text-rose-400'
+                    : 'text-emerald-400'
+                }`}
+              >
+                {isMotorMoving ? 'STEPPING' : feedbackState.capControl.stage}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

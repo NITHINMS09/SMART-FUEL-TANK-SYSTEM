@@ -118,6 +118,7 @@ export interface AutomationFeedbackState {
   isMotorMoving: boolean;
   stability: StabilityStatus;
   errorMessage: string | null;
+  capControl?: AutomaticCapState;
 }
 
 export interface DeviceSettings {
@@ -169,4 +170,27 @@ export interface ProfileInterpolationResult {
   nearestVolume: number;
   lowerProfile?: MotorProfile;
   upperProfile?: MotorProfile;
+}
+
+export type CapOperationStage =
+  | 'IDLE'
+  | 'CAPTURING_READING'
+  | 'CALCULATING_VOLUME'
+  | 'SELECTING_PROFILE'
+  | 'EXECUTING_MOTOR'
+  | 'COMPLETED'
+  | 'ERROR';
+
+export interface AutomaticCapState {
+  lastAction: 'OPEN' | 'CLOSE' | null;
+  stage: CapOperationStage;
+  currentRaw: number | null;
+  calculatedVolumeMl: number | null;
+  selectedProfile: string | null;
+  selectedDegrees: number | null;
+  selectedDirection: MotorDirection | null;
+  isInterpolated: boolean;
+  motorStatus: 'IDLE' | 'MOVING' | 'COMPLETED' | 'ERROR';
+  lastOperationTime: number | null;
+  errorMessage: string | null;
 }

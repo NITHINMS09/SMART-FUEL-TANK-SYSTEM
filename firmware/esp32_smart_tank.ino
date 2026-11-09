@@ -517,10 +517,16 @@ void processCommand(const String& cmd) {
   if (cmd.startsWith("OPEN,")) {
     // Format: OPEN,<degrees>,<CW or CCW>
     int idx = cmd.indexOf(',', 5);
-    int deg = cmd.substring(5, idx).toInt();
-    String dirStr = cmd.substring(idx + 1);
-    dirStr.trim();
-    bool isCW = (dirStr == "CW" || dirStr == "1");
+    int deg = 0;
+    bool isCW = true;
+    if (idx != -1) {
+      deg = cmd.substring(5, idx).toInt();
+      String dirStr = cmd.substring(idx + 1);
+      dirStr.trim();
+      isCW = (dirStr == "CW" || dirStr == "1");
+    } else {
+      deg = cmd.substring(5).toInt();
+    }
 
     startMotorMove(deg, isCW);
     return;
@@ -529,10 +535,16 @@ void processCommand(const String& cmd) {
   if (cmd.startsWith("CLOSE,")) {
     // Format: CLOSE,<degrees>,<CW or CCW>
     int idx = cmd.indexOf(',', 6);
-    int deg = cmd.substring(6, idx).toInt();
-    String dirStr = cmd.substring(idx + 1);
-    dirStr.trim();
-    bool isCW = (dirStr == "CW" || dirStr == "1");
+    int deg = 0;
+    bool isCW = true;
+    if (idx != -1) {
+      deg = cmd.substring(6, idx).toInt();
+      String dirStr = cmd.substring(idx + 1);
+      dirStr.trim();
+      isCW = (dirStr == "CW" || dirStr == "1");
+    } else {
+      deg = cmd.substring(6).toInt();
+    }
 
     startMotorMove(deg, isCW);
     return;

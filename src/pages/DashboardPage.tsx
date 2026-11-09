@@ -470,252 +470,169 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
-      {/* Active Automatic Mode Continuous Feedback Control Ribbon */}
-      {mode === 'AUTOMATIC' && automationFeedbackState && (
-        <div className="panel-glass rounded-xl p-4 border-cyan-500/50 bg-[#070e1c] font-mono text-xs space-y-3 shadow-glow-cyan animate-fadeIn">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cyan-900/60 pb-2.5">
-            <div className="flex items-center space-x-2.5">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
-              </span>
-              <span className="font-bold uppercase tracking-wider text-white text-xs">
-                Automatic Mode Active: Continuous Closed-Loop Feedback
-              </span>
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                  automationFeedbackState.status === 'ADJUSTING'
-                    ? 'bg-amber-950/80 border-amber-600 text-amber-300'
-                    : automationFeedbackState.status === 'STABLE'
-                    ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
-                    : automationFeedbackState.status === 'UNSTABLE'
-                    ? 'bg-amber-950/60 border-amber-500 text-amber-300'
-                    : 'bg-cyan-950/80 border-cyan-600 text-cyan-300'
-                }`}
-              >
-                {automationFeedbackState.status}
-              </span>
+      {/* 5. Automatic Cap Control System Card (Fulfills Requirements 1, 2, 3, 4, 5, 6) */}
+      <div className="panel-glass rounded-xl p-5 border-slate-800 space-y-4 shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 rounded-lg bg-cyan-950/80 border border-cyan-800/50 text-cyan-400 shadow-glow-cyan">
+              <Cpu className="w-5 h-5" />
             </div>
-
-            <div className="flex items-center space-x-2">
-              {onModeChange && (
-                <button
-                  type="button"
-                  onClick={() => onModeChange('MANUAL')}
-                  className="px-3 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold transition-all"
+            <div>
+              <h3 className="text-sm font-mono font-bold uppercase text-white tracking-wider flex items-center space-x-2">
+                <span>Automatic Cap Control System</span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded border font-mono ${
+                    isAutomationRunning || motorStatus === 'RUNNING'
+                      ? 'bg-amber-950/80 border-amber-600 text-amber-300 animate-pulse'
+                      : 'bg-emerald-950/60 border-emerald-700/60 text-emerald-400'
+                  }`}
                 >
-                  Switch to Manual
-                </button>
+                  {isAutomationRunning || motorStatus === 'RUNNING' ? 'EXECUTING MOTOR' : 'READY'}
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400 font-mono mt-0.5">
+                Fresh Load Cell Reading → Calculate Volume → Select Motor Profile → Execute Existing Motor Function
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            <button
+              type="button"
+              onClick={onTriggerCapOpen}
+              disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
+              className="px-5 py-2.5 rounded-xl bg-sky-950/80 hover:bg-sky-900 active:scale-95 border border-sky-600/60 text-sky-300 font-mono text-xs font-bold flex items-center space-x-2 shadow-glow-blue transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              title="Capture fresh reading, calculate volume, and execute configured OPEN rotation"
+            >
+              <Unlock className="w-4 h-4" />
+              <span>CAP OPEN</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onTriggerCapClose}
+              disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
+              className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-slate-950 font-mono text-xs font-extrabold flex items-center space-x-2 shadow-glow-cyan transition-all disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              title="Capture fresh reading, calculate volume, and execute configured CLOSE rotation"
+            >
+              <Lock className="w-4 h-4 fill-current" />
+              <span>CAP CLOSE</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 6 Required Metric Displays */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 font-mono">
+          {/* 1. Current Liquid Volume */}
+          <div className="bg-[#060b16] p-3 rounded-lg border border-slate-800">
+            <span className="text-[10px] text-slate-500 uppercase block font-semibold">1. Liquid Volume</span>
+            <span className="text-emerald-400 font-bold text-sm block mt-0.5 truncate">
+              {automationFeedbackState?.capControl?.calculatedVolumeMl !== null &&
+              automationFeedbackState?.capControl?.calculatedVolumeMl !== undefined
+                ? `${formatNumber(automationFeedbackState.capControl.calculatedVolumeMl, 1)} ml`
+                : volumeInterpolation.volumeMl !== null
+                ? `${formatNumber(volumeInterpolation.volumeMl, 1)} ml`
+                : '—'}
+            </span>
+            <span className="text-[9px] text-slate-500 truncate block">
+              {volumeInterpolation.isCalibrated ? 'Calibrated Curve' : 'Uncalibrated'}
+            </span>
+          </div>
+
+          {/* 2. Current Raw Reading */}
+          <div className="bg-[#060b16] p-3 rounded-lg border border-slate-800">
+            <span className="text-[10px] text-slate-500 uppercase block font-semibold">2. Raw Reading</span>
+            <span className="text-white font-bold text-sm block mt-0.5 truncate">
+              {formatNumber(automationFeedbackState?.capControl?.currentRaw ?? stats.currentRaw)}
+            </span>
+            <span className="text-[9px] text-cyan-400 font-mono truncate block">
+              {stats.stability}
+            </span>
+          </div>
+
+          {/* 3. Selected Motor Profile */}
+          <div className="bg-[#060b16] p-3 rounded-lg border border-slate-800">
+            <span className="text-[10px] text-slate-500 uppercase block font-semibold">3. Selected Profile</span>
+            <span
+              className="text-sky-300 font-bold text-xs truncate block mt-0.5"
+              title={automationFeedbackState?.capControl?.selectedProfile || 'Awaiting Action'}
+            >
+              {automationFeedbackState?.capControl?.selectedProfile ||
+                (motorProfiles.length > 0 ? `${motorProfiles.length} Profiles Saved` : 'None Configured')}
+            </span>
+            <span className="text-[9px] text-slate-500 truncate block">
+              {automationFeedbackState?.capControl?.isInterpolated ? 'Interpolated' : 'Saved Profile'}
+            </span>
+          </div>
+
+          {/* 4. Selected Rotation Angle */}
+          <div className="bg-[#060b16] p-3 rounded-lg border border-slate-800">
+            <span className="text-[10px] text-slate-500 uppercase block font-semibold">4. Rotation Angle</span>
+            <span className="text-cyan-300 font-bold text-sm block mt-0.5 truncate">
+              {automationFeedbackState?.capControl?.selectedDegrees !== null &&
+              automationFeedbackState?.capControl?.selectedDegrees !== undefined
+                ? formatDegrees(automationFeedbackState.capControl.selectedDegrees)
+                : '—'}
+            </span>
+            <span className="text-[9px] text-slate-500 truncate block">
+              Configured Setting
+            </span>
+          </div>
+
+          {/* 5. Selected Direction */}
+          <div className="bg-[#060b16] p-3 rounded-lg border border-slate-800">
+            <span className="text-[10px] text-slate-500 uppercase block font-semibold">5. Direction</span>
+            <span className="text-white font-bold text-sm block mt-0.5 truncate">
+              {automationFeedbackState?.capControl?.selectedDirection ? (
+                <span className="flex items-center space-x-1">
+                  <span>{automationFeedbackState.capControl.selectedDirection}</span>
+                  <span className="text-[10px] text-slate-400">
+                    ({automationFeedbackState.capControl.selectedDirection === 'CW' ? 'Clockwise' : 'Anticlockwise'})
+                  </span>
+                </span>
+              ) : (
+                '—'
               )}
-              {onEmergencyStop && (
-                <button
-                  type="button"
-                  onClick={onEmergencyStop}
-                  className="px-3.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold tracking-wider shadow-sm transition-all"
-                >
-                  STOP
-                </button>
-              )}
-            </div>
+            </span>
+            <span className="text-[9px] text-slate-500 truncate block">
+              Profile Direction
+            </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 text-center">
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Live Volume</span>
-              <span className="text-emerald-400 font-bold text-sm">
-                {automationFeedbackState.calculatedVolumeMl !== null
-                  ? `${formatNumber(automationFeedbackState.calculatedVolumeMl, 1)} ml`
-                  : '—'}
-              </span>
-            </div>
-
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Current Motor Pos</span>
-              <span className="text-white font-bold text-sm">
-                {formatDegrees(automationFeedbackState.currentMotorPosition)}
-              </span>
-            </div>
-
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Target Motor Pos</span>
-              <span className="text-sky-300 font-bold text-sm">
-                {formatDegrees(automationFeedbackState.targetMotorPosition)}
-              </span>
-            </div>
-
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Required Δ</span>
-              <span
-                className={`font-bold text-sm ${
-                  Math.abs(automationFeedbackState.requiredAdjustment) < automationFeedbackState.angleDeadband
-                    ? 'text-emerald-400'
-                    : 'text-amber-400'
-                }`}
-              >
-                {automationFeedbackState.requiredAdjustment > 0
-                  ? `+${automationFeedbackState.requiredAdjustment}`
-                  : automationFeedbackState.requiredAdjustment}°
-              </span>
-            </div>
-
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Motor Direction</span>
-              <span className="text-cyan-300 font-bold text-sm">
-                {automationFeedbackState.motorDirection}
-              </span>
-            </div>
-
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Filtered ADC</span>
-              <span className="text-slate-300 font-bold text-sm">
-                {formatNumber(automationFeedbackState.filteredRaw)}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Fast Action Quick-Bar */}
-      <div className="panel-glass rounded-xl p-5 border-slate-800 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-cyan-400">
-            <Cpu className="w-5 h-5" />
-          </div>
-          <div>
-            <h4 className="text-xs font-mono font-bold uppercase text-white tracking-wider">
-              Quick Automation Controls
-            </h4>
-            <p className="text-[11px] font-mono text-slate-400">
-              Trigger instant automated cycle or manual jog without switching pages
-            </p>
+          {/* 6. Motor Operation Status */}
+          <div className="bg-[#060b16] p-3 rounded-lg border border-slate-800">
+            <span className="text-[10px] text-slate-500 uppercase block font-semibold">6. Motor Status</span>
+            <span
+              className={`font-bold text-xs block mt-0.5 truncate ${
+                isAutomationRunning || motorStatus === 'RUNNING'
+                  ? 'text-amber-400 animate-pulse'
+                  : automationFeedbackState?.capControl?.stage === 'ERROR'
+                  ? 'text-rose-400'
+                  : 'text-emerald-400'
+              }`}
+            >
+              {isAutomationRunning || motorStatus === 'RUNNING'
+                ? 'STEPPING MOTOR'
+                : automationFeedbackState?.capControl?.stage === 'ERROR'
+                ? 'ERROR'
+                : automationFeedbackState?.capControl?.stage === 'COMPLETED'
+                ? 'COMPLETED'
+                : 'IDLE'}
+            </span>
+            <span className="text-[9px] text-slate-500 truncate block">
+              DRV8825 State
+            </span>
           </div>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={onTriggerCapOpen}
-            disabled={connectionState !== 'CONNECTED' || isAutomationRunning}
-            className="px-4 py-2 rounded-lg bg-sky-950/70 hover:bg-sky-900 border border-sky-800/60 text-sky-300 font-mono text-xs font-bold flex items-center space-x-2 transition-all disabled:opacity-40"
-          >
-            <Unlock className="w-4 h-4" />
-            <span>Cap Open</span>
-          </button>
-
-          <button
-            onClick={onTriggerCapClose}
-            disabled={connectionState !== 'CONNECTED' || isAutomationRunning}
-            className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-mono text-xs font-bold flex items-center space-x-2 shadow-glow-cyan transition-all disabled:opacity-40"
-          >
-            <Lock className="w-4 h-4" />
-            <span>Cap Closed ({mode})</span>
-          </button>
-        </div>
+        {/* Operational Error Banner if any */}
+        {automationFeedbackState?.capControl?.errorMessage && (
+          <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-800 text-rose-300 text-xs flex items-center space-x-2 font-mono">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>Cap Control Error: {automationFeedbackState.capControl.errorMessage}</span>
+          </div>
+        )}
       </div>
-
-      {/* Active Automatic Mode Continuous Feedback Control Ribbon */}
-      {mode === 'AUTOMATIC' && automationFeedbackState && (
-        <div className="panel-glass rounded-xl p-4 border-cyan-500/50 bg-[#070e1c] font-mono text-xs space-y-3 shadow-glow-cyan animate-fadeIn">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cyan-900/60 pb-2.5">
-            <div className="flex items-center space-x-2.5">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
-              </span>
-              <span className="font-bold uppercase tracking-wider text-white text-xs">
-                Automatic Mode Active: Continuous Closed-Loop Feedback
-              </span>
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                  automationFeedbackState.status === 'ADJUSTING'
-                    ? 'bg-amber-950/80 border-amber-600 text-amber-300'
-                    : automationFeedbackState.status === 'STABLE'
-                    ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
-                    : automationFeedbackState.status === 'UNSTABLE'
-                    ? 'bg-amber-950/60 border-amber-500 text-amber-300'
-                    : 'bg-cyan-950/80 border-cyan-600 text-cyan-300'
-                }`}
-              >
-                {automationFeedbackState.status}
-              </span>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              {onModeChange && (
-                <button
-                  type="button"
-                  onClick={() => onModeChange('MANUAL')}
-                  className="px-3 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold transition-all"
-                >
-                  Switch to Manual
-                </button>
-              )}
-              {onEmergencyStop && (
-                <button
-                  type="button"
-                  onClick={onEmergencyStop}
-                  className="px-3.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold tracking-wider shadow-sm transition-all"
-                >
-                  STOP
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 text-center">
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Live Volume</span>
-              <span className="text-emerald-400 font-bold text-sm">
-                {automationFeedbackState.calculatedVolumeMl !== null
-                  ? `${formatNumber(automationFeedbackState.calculatedVolumeMl, 1)} ml`
-                  : '—'}
-              </span>
-            </div>
-
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Current Motor Pos</span>
-              <span className="text-white font-bold text-sm">
-                {formatDegrees(automationFeedbackState.currentMotorPosition)}
-              </span>
-            </div>
-
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Target Motor Pos</span>
-              <span className="text-sky-300 font-bold text-sm">
-                {formatDegrees(automationFeedbackState.targetMotorPosition)}
-              </span>
-            </div>
-
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Required Δ</span>
-              <span
-                className={`font-bold text-sm ${
-                  Math.abs(automationFeedbackState.requiredAdjustment) < automationFeedbackState.angleDeadband
-                    ? 'text-emerald-400'
-                    : 'text-amber-400'
-                }`}
-              >
-                {automationFeedbackState.requiredAdjustment > 0
-                  ? `+${automationFeedbackState.requiredAdjustment}`
-                  : automationFeedbackState.requiredAdjustment}°
-              </span>
-            </div>
-
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Motor Direction</span>
-              <span className="text-cyan-300 font-bold text-sm">
-                {automationFeedbackState.motorDirection}
-              </span>
-            </div>
-
-            <div className="bg-[#050a14] p-2 rounded border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Filtered ADC</span>
-              <span className="text-slate-300 font-bold text-sm">
-                {formatNumber(automationFeedbackState.filteredRaw)}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

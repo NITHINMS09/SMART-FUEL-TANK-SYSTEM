@@ -1,5 +1,6 @@
 import {
   AutomationEvent,
+  AutomaticCapState,
   CalibrationPoint,
   MotorDirection,
   MotorProfile,
@@ -7,7 +8,7 @@ import {
   RawReading,
 } from '../types';
 import { calculateLoadCellStats, interpolateVolumeFromRaw } from './calibrationService';
-import { interpolateClosedMotorAction } from './motorService';
+import { interpolateMotorAction } from './motorService';
 import { serialService } from './serialService';
 
 export interface AutoCloseProgress {
@@ -20,82 +21,113 @@ export interface AutoCloseProgress {
 
 export class AutomationService {
   /**
-   * Helper to execute automatic cap closed sequence:
-   * 1. Send AUTO_CLOSE to ESP32.
-   * 2. ESP32 starts sequence and streams readings or CAL/AUTO_VOLUME/AUTO_ROTATION.
-   * 3. Collect 20 readings if needed or compute from current window.
-   * 4. Convert raw reading into ml using saved calibration points.
-   * 5. Identify relevant motor profile.
-   * 6. Interpolate rotation angle.
-   * 7. Select direction according to nearest configured profile.
-   * 8. Execute motor rotation (or verify firmware AUTO_ROTATION).
-   * 9. Return execution summary for UI and logging.
+   * Core Automatic Cap Workflow (OPEN or CLOSE):
+   * 1. Capture a fresh, stable HX711 reading.
+   * 2. Calculate the current liquid volume using saved calibration points.
+   * 3. Identify the corresponding existing motor configuration for that volume.
+   * 4. Retrieve its configured rotation and direction.
+   * 5. Execute the existing motor-control function with those exact settings.
+   * 6. Report the selected profile and movement status.
    */
-  static async executeAutoClose(
+  static async executeAutomaticCap(
+    action: 'OPEN' | 'CLOSE',
     recentReadings: RawReading[],
     calibrationPoints: CalibrationPoint[],
     motorProfiles: MotorProfile[],
-    onProgress?: (progress: AutoCloseProgress) => void
+    onProgress?: (state: Partial<AutomaticCapState>) => void,
+    manualMotorFunction?: (action: 'OPEN' | 'CLOSE', degrees: number, direction: MotorDirection) => Promise<void>
   ): Promise<AutomationEvent> {
-    const notify = (stage: AutoCloseProgress['stage'], extra?: Partial<AutoCloseProgress>) => {
-      onProgress?.({
-        stage,
-        measuredVolumeMl: extra?.measuredVolumeMl ?? null,
-        targetDegrees: extra?.targetDegrees ?? null,
-        targetDirection: extra?.targetDirection ?? null,
-        errorMessage: extra?.errorMessage ?? null,
-      });
-    };
-
     try {
-      notify('SENDING_CMD');
-      await serialService.sendCommand('AUTO_CLOSE');
+      // 0. Initial state notification
+      onProgress?.({
+        lastAction: action,
+        stage: 'CAPTURING_READING',
+        motorStatus: 'IDLE',
+        errorMessage: null,
+      });
 
-      notify('COLLECTING_READINGS');
-      // If we already have recent live readings, use latest 20;
-      // otherwise, pause 600ms to allow 20 samples from stream
-      if (recentReadings.length < 20) {
-        await new Promise((r) => setTimeout(r, 800));
+      if (serialService.getState() !== 'CONNECTED') {
+        throw new Error('ESP32 USB Serial is disconnected. Please connect the device.');
       }
 
-      notify('CALCULATING_VOLUME');
+      if (serialService.isMotorRunning()) {
+        throw new Error('Motor is currently executing another movement.');
+      }
+
+      // 1. Capture fresh, stable HX711 reading
+      // If reading window has fewer than 5 readings, pause briefly to gather fresh samples
+      if (recentReadings.length < 5) {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+
       const stats = calculateLoadCellStats(recentReadings, 100, 20);
-      const avgRaw = stats.average;
+      const freshRaw = stats.filteredRaw !== null ? stats.filteredRaw : stats.average;
 
-      if (avgRaw === null) {
-        throw new Error('Could not obtain valid sensor readings during automation.');
+      if (freshRaw === null) {
+        throw new Error('Could not obtain valid HX711 sensor readings from ESP32.');
       }
 
-      const interp = interpolateVolumeFromRaw(avgRaw, calibrationPoints);
+      onProgress?.({
+        currentRaw: freshRaw,
+        stage: 'CALCULATING_VOLUME',
+      });
+
+      // 2. Calculate liquid volume using confirmed calibration points
+      const confirmedCalPoints = calibrationPoints.filter((p) => p.status === 'CONFIRMED');
+      if (confirmedCalPoints.length < 2) {
+        throw new Error(
+          `Liquid volume is uncalibrated (${confirmedCalPoints.length} points found). At least 2 calibration points are required.`
+        );
+      }
+
+      const interp = interpolateVolumeFromRaw(freshRaw, confirmedCalPoints);
       if (!interp.isCalibrated || interp.volumeMl === null) {
-        throw new Error(interp.statusMessage || 'System not calibrated. Unable to calculate water volume.');
+        throw new Error(interp.statusMessage || 'Unable to calculate liquid volume from sensor reading.');
       }
 
       const volumeMl = interp.volumeMl;
 
-      notify('SELECTING_PROFILE', { measuredVolumeMl: volumeMl });
-
-      const profileResult = interpolateClosedMotorAction(volumeMl, motorProfiles);
-      if (!profileResult) {
-        throw new Error(`No matching motor profile found for calculated volume of ${volumeMl} ml. Please configure profiles in Motor Configuration.`);
-      }
-
-      notify('EXECUTING_MOTOR', {
-        measuredVolumeMl: volumeMl,
-        targetDegrees: profileResult.degrees,
-        targetDirection: profileResult.direction,
+      onProgress?.({
+        calculatedVolumeMl: volumeMl,
+        stage: 'SELECTING_PROFILE',
       });
 
-      // The firmware AUTO_CLOSE might execute the rotation, or if separate motor command is needed:
-      // Send CLOSE command with calculated parameters
-      await serialService.sendCommand(`CLOSE,${profileResult.degrees},${profileResult.direction}`);
+      // 3. Identify the corresponding existing motor configuration
+      if (!motorProfiles || motorProfiles.length === 0) {
+        throw new Error('No motor profiles configured. Please create motor profiles in the Motor Configuration tab.');
+      }
 
-      // Wait until motor finishes
+      const profileResult = interpolateMotorAction(action, volumeMl, motorProfiles);
+      if (!profileResult) {
+        throw new Error(`No matching motor configuration found for calculated volume of ${volumeMl.toFixed(1)} ml.`);
+      }
+
+      // 4. Retrieve configured rotation and direction
+      const { degrees, direction, profileDescription, interpolated } = profileResult;
+
+      onProgress?.({
+        stage: 'EXECUTING_MOTOR',
+        selectedProfile: profileDescription,
+        selectedDegrees: degrees,
+        selectedDirection: direction,
+        isInterpolated: interpolated,
+        motorStatus: 'MOVING',
+      });
+
+      // 5. Execute the existing motor-control function
+      if (manualMotorFunction) {
+        await manualMotorFunction(action, degrees, direction);
+      } else {
+        await serialService.sendCommand(`${action},${Math.round(degrees)},${direction}`);
+      }
+
+      // 6. Wait until motor completes execution
       await new Promise<void>((resolve, reject) => {
+        const timeoutMs = Math.max(8000, degrees * 25);
         const timeout = setTimeout(() => {
           sub();
-          resolve(); // assume done after reasonable timeout if no response
-        }, 12000);
+          resolve(); // Graceful fallback
+        }, timeoutMs);
 
         const sub = serialService.subscribe((ev) => {
           if (ev.type === 'MOTOR_COMPLETED') {
@@ -110,40 +142,68 @@ export class AutomationService {
         });
       });
 
-      notify('COMPLETED', {
-        measuredVolumeMl: volumeMl,
-        targetDegrees: profileResult.degrees,
-        targetDirection: profileResult.direction,
+      onProgress?.({
+        stage: 'COMPLETED',
+        motorStatus: 'COMPLETED',
+        lastOperationTime: Date.now(),
       });
 
-      const event: AutomationEvent = {
+      return {
         id: Math.random().toString(36).substring(2, 9),
         timestamp: Date.now(),
-        type: 'AUTO_CLOSE',
+        type: action === 'OPEN' ? 'CAP_OPEN' : 'CAP_CLOSED',
         mode: 'AUTOMATIC',
         volumeMl,
-        degrees: profileResult.degrees,
-        direction: profileResult.direction,
+        degrees,
+        direction,
         status: 'SUCCESS',
-        details: `Automatic cap close: ${volumeMl} ml measured -> rotated ${profileResult.degrees}° ${profileResult.direction}${profileResult.interpolated ? ' (interpolated)' : ''}`,
+        details: `Automatic Cap ${action}: Fresh reading ${freshRaw} -> ${volumeMl.toFixed(1)} ml -> ${profileDescription} -> Executed ${degrees}° ${direction}`,
       };
-
-      return event;
     } catch (err: any) {
-      notify('ERROR', { errorMessage: err.message });
-      const event: AutomationEvent = {
+      onProgress?.({
+        stage: 'ERROR',
+        motorStatus: 'ERROR',
+        errorMessage: err.message,
+      });
+
+      return {
         id: Math.random().toString(36).substring(2, 9),
         timestamp: Date.now(),
-        type: 'AUTO_CLOSE',
+        type: action === 'OPEN' ? 'CAP_OPEN' : 'CAP_CLOSED',
         mode: 'AUTOMATIC',
         volumeMl: null,
         degrees: null,
         direction: 'NONE',
         status: 'FAILED',
-        details: `Automation failed: ${err.message}`,
+        details: `Cap ${action} failed: ${err.message}`,
       };
-      return event;
     }
+  }
+
+  /**
+   * Backward-compatible helper for automated cap close
+   */
+  static async executeAutoClose(
+    recentReadings: RawReading[],
+    calibrationPoints: CalibrationPoint[],
+    motorProfiles: MotorProfile[],
+    onProgress?: (progress: AutoCloseProgress) => void
+  ): Promise<AutomationEvent> {
+    return AutomationService.executeAutomaticCap(
+      'CLOSE',
+      recentReadings,
+      calibrationPoints,
+      motorProfiles,
+      (state) => {
+        onProgress?.({
+          stage: state.stage as any,
+          measuredVolumeMl: state.calculatedVolumeMl ?? null,
+          targetDegrees: state.selectedDegrees ?? null,
+          targetDirection: state.selectedDirection ?? null,
+          errorMessage: state.errorMessage ?? null,
+        });
+      }
+    );
   }
 
   /**

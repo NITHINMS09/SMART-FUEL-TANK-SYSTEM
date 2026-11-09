@@ -3,6 +3,7 @@ import {
   AutomationEvent,
   AutomationFeedbackState,
   AutomationStatus,
+  AutomaticCapState,
   CalibrationPoint,
   ConnectionState,
   InterpolationResult,
@@ -23,7 +24,8 @@ export function useAutomation(
   volumeInterpolation: InterpolationResult,
   calibrationPoints: CalibrationPoint[],
   motorProfiles: MotorProfile[],
-  connectionState: ConnectionState
+  connectionState: ConnectionState,
+  onRotate?: (action: 'OPEN' | 'CLOSE', degrees: number, direction: MotorDirection) => Promise<void>
 ) {
   // Mode selection (persisted)
   const [mode, setMode] = useState<OperatingMode>(() => {
@@ -66,6 +68,21 @@ export function useAutomation(
     measuredVolumeMl: null,
     targetDegrees: null,
     targetDirection: null,
+    errorMessage: null,
+  });
+
+  // Dedicated Automatic Cap Control State (Display metrics)
+  const [capControlState, setCapControlState] = useState<AutomaticCapState>({
+    lastAction: null,
+    stage: 'IDLE',
+    currentRaw: null,
+    calculatedVolumeMl: null,
+    selectedProfile: null,
+    selectedDegrees: null,
+    selectedDirection: null,
+    isInterpolated: false,
+    motorStatus: 'IDLE',
+    lastOperationTime: null,
     errorMessage: null,
   });
 
@@ -329,35 +346,68 @@ export function useAutomation(
   }, [connectionState, mode, addEventToHistory]);
 
   /**
-   * Manual Cap Close
+   * Automatic Cap Open Workflow:
+   * 1. Capture fresh stable reading.
+   * 2. Calculate volume ml using saved calibration points.
+   * 3. Identify matching OPEN profile (interpolating if between configured volume points).
+   * 4. Retrieve configured open rotation & direction.
+   * 5. Execute existing manual motor function with those exact settings.
+   * 6. Display selected profile and movement status.
+   */
+  const triggerCapOpen = useCallback(async () => {
+    if (isMotorMoving || isExecutingAdjustmentRef.current) return;
+    isExecutingAdjustmentRef.current = true;
+
+    try {
+      const event = await AutomationService.executeAutomaticCap(
+        'OPEN',
+        readings,
+        calibrationPoints,
+        motorProfiles,
+        (partial) => {
+          setCapControlState((prev) => ({ ...prev, ...partial }));
+        },
+        onRotate
+      );
+      addEventToHistory(event);
+    } catch (err: any) {
+      console.error('Automatic Cap Open execution error:', err);
+    } finally {
+      isExecutingAdjustmentRef.current = false;
+    }
+  }, [isMotorMoving, readings, calibrationPoints, motorProfiles, onRotate, addEventToHistory]);
+
+  /**
+   * Automatic Cap Close Workflow:
+   * 1. Capture fresh stable reading.
+   * 2. Calculate volume ml using saved calibration points.
+   * 3. Identify matching CLOSE profile (interpolating if between configured volume points).
+   * 4. Retrieve configured close rotation & direction.
+   * 5. Execute existing manual motor function with those exact settings.
+   * 6. Display selected profile and movement status.
    */
   const triggerCapClose = useCallback(async () => {
     if (isMotorMoving || isExecutingAdjustmentRef.current) return;
+    isExecutingAdjustmentRef.current = true;
 
     try {
-      const event = await AutomationService.executeCapClose(180, 'CCW', mode);
+      const event = await AutomationService.executeAutomaticCap(
+        'CLOSE',
+        readings,
+        calibrationPoints,
+        motorProfiles,
+        (partial) => {
+          setCapControlState((prev) => ({ ...prev, ...partial }));
+        },
+        onRotate
+      );
       addEventToHistory(event);
     } catch (err: any) {
-      console.error('Manual cap close failed:', err);
+      console.error('Automatic Cap Close execution error:', err);
+    } finally {
+      isExecutingAdjustmentRef.current = false;
     }
-  }, [isMotorMoving, mode, addEventToHistory]);
-
-  /**
-   * Manual Cap Open
-   */
-  const triggerCapOpen = useCallback(
-    async (degrees: number = 90, direction: MotorDirection = 'CW') => {
-      if (isMotorMoving || isExecutingAdjustmentRef.current) return;
-
-      try {
-        const event = await AutomationService.executeCapOpen(degrees, direction, mode);
-        addEventToHistory(event);
-      } catch (err: any) {
-        console.error('Manual cap open failed:', err);
-      }
-    },
-    [isMotorMoving, mode, addEventToHistory]
-  );
+  }, [isMotorMoving, readings, calibrationPoints, motorProfiles, onRotate, addEventToHistory]);
 
   const clearHistory = useCallback(() => {
     setHistory([]);
@@ -388,6 +438,15 @@ export function useAutomation(
     isMotorMoving,
     stability: stats.stability,
     errorMessage,
+    capControl: {
+      ...capControlState,
+      currentRaw: capControlState.currentRaw !== null ? capControlState.currentRaw : stats.currentRaw,
+      calculatedVolumeMl:
+        capControlState.calculatedVolumeMl !== null
+          ? capControlState.calculatedVolumeMl
+          : volumeInterpolation.volumeMl,
+      motorStatus: isMotorMoving ? 'MOVING' : capControlState.motorStatus,
+    },
   };
 
   return {
@@ -408,6 +467,7 @@ export function useAutomation(
     progress,
     errorMessage,
     feedbackState,
+    capControlState,
     triggerEmergencyStop,
     zeroMotorPosition,
     triggerCapClose,

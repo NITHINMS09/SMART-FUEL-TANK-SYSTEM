@@ -104,7 +104,8 @@ export function App() {
     volumeInterpolation,
     points,
     profiles,
-    connectionState
+    connectionState,
+    testRotation
   );
 
   // Synchronize stability threshold with settings
@@ -194,7 +195,7 @@ export function App() {
               mode={mode}
               readings={readings}
               onTriggerCapClose={triggerCapClose}
-              onTriggerCapOpen={() => triggerCapOpen(90, 'CW')}
+              onTriggerCapOpen={triggerCapOpen}
               isAutomationRunning={isAutomationRunning}
               automationFeedbackState={automationFeedbackState}
               onModeChange={setMode}
@@ -273,7 +274,7 @@ export function App() {
               onModeChange={setMode}
               feedbackState={automationFeedbackState}
               onTriggerCapClose={triggerCapClose}
-              onTriggerCapOpen={() => triggerCapOpen(90, 'CW')}
+              onTriggerCapOpen={triggerCapOpen}
               onEmergencyStop={triggerEmergencyStop}
               onZeroPosition={zeroMotorPosition}
               onUpdateConfig={updateAutomationConfig}
