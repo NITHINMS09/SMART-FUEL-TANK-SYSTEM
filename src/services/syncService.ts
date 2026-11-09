@@ -2,12 +2,13 @@
  * ==============================================================================
  * SMART TANK CONTROL CENTER - MULTI-DEVICE SYNC SERVICE
  * ==============================================================================
- * Client-side real-time communication service leveraging native browser WebSockets.
- * Handles:
+ * Client-side real-time communication service leveraging native browser WebSockets
+ * and HTTP fallbacks. Handles:
  *  - Automatic connection and exponential backoff reconnection
- *  - Gateway telemetry publishing (Laptop A)
+ *  - Authoritative Gateway telemetry publishing (Laptop A)
  *  - Remote telemetry consumption (Mobile B, Laptop C, etc.)
  *  - Authenticated command dispatching & acknowledgement tracking
+ *  - Robust multi-endpoint authentication with descriptive diagnostic feedback
  * ==============================================================================
  */
 
@@ -25,6 +26,13 @@ export interface CommandResponse {
   capState?: CapState;
 }
 
+export interface HealthCheckResult {
+  ok: boolean;
+  latencyMs: number;
+  statusText: string;
+  details?: any;
+}
+
 type TelemetryListener = (snapshot: TelemetrySnapshot) => void;
 type GatewayStatusListener = (online: boolean, message: string) => void;
 type GatewayCommandListener = (cmd: { action: RemoteControlAction; requestId: string }) => void;
@@ -37,6 +45,7 @@ class SyncServiceClass {
   private role: SyncDeviceRole = 'CLIENT';
   private deviceId: string;
   private serverUrl: string = '';
+  private apiUrl: string = '';
   private authToken: string | null = null;
   private reconnectTimeout: any = null;
   private reconnectAttempt: number = 0;
@@ -72,31 +81,50 @@ class SyncServiceClass {
     // Restore cached auth token if available
     this.authToken = sessionStorage.getItem('smart_tank_auth_token');
 
-    // Determine initial server URL
+    // Determine initial server & API URLs
     this.serverUrl = this.resolveInitialServerUrl();
+    this.apiUrl = this.resolveInitialApiUrl();
   }
 
   /**
-   * Determine default sync server URL based on environment or storage
+   * Determine default sync server WebSocket URL
    */
   public resolveInitialServerUrl(): string {
     const saved = localStorage.getItem('smart_tank_sync_url');
-    if (saved) return saved;
+    if (saved && saved.trim()) return saved.trim();
 
     const envUrl = (import.meta as any).env?.VITE_SYNC_SERVER_URL;
-    if (envUrl) return envUrl;
+    if (envUrl && envUrl.trim()) return envUrl.trim();
 
     if (typeof window !== 'undefined') {
-      const isSecure = window.location.protocol === 'https:';
       const host = window.location.hostname;
-      // If running locally, default to port 4001
+      // Local development default
       if (host === 'localhost' || host === '127.0.0.1') {
         return `ws://${host}:4001`;
       }
-      // In production, user can configure or connect to wss://
-      return `${isSecure ? 'wss' : 'ws'}://${host}:4001`;
+      // Production Cloud Backend default (WSS over standard 443 SSL)
+      return 'wss://smart-fuel-tank-system.onrender.com';
     }
-    return 'ws://localhost:4001';
+    return 'wss://smart-fuel-tank-system.onrender.com';
+  }
+
+  /**
+   * Determine default sync server HTTP API URL
+   */
+  public resolveInitialApiUrl(): string {
+    const saved = localStorage.getItem('smart_tank_api_url');
+    if (saved && saved.trim()) return saved.trim();
+
+    const envUrl = (import.meta as any).env?.VITE_SYNC_API_URL;
+    if (envUrl && envUrl.trim()) return envUrl.trim();
+
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname;
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return `http://${host}:4001`;
+      }
+    }
+    return 'https://smart-fuel-tank-system.onrender.com';
   }
 
   public getStatus(): SyncConnectionStatus {
@@ -111,6 +139,10 @@ class SyncServiceClass {
     return this.serverUrl;
   }
 
+  public getApiUrl(): string {
+    return this.apiUrl;
+  }
+
   public getDeviceId(): string {
     return this.deviceId;
   }
@@ -120,13 +152,31 @@ class SyncServiceClass {
   }
 
   /**
-   * Update target sync server URL and reconnect
+   * Update target sync server URL and reconnect cleanly
    */
   public setServerUrl(newUrl: string): void {
-    const trimmed = newUrl.trim();
-    if (trimmed && trimmed !== this.serverUrl) {
+    let trimmed = newUrl.trim();
+    if (!trimmed) return;
+
+    // Normalize protocol
+    if (!trimmed.startsWith('ws://') && !trimmed.startsWith('wss://')) {
+      if (trimmed.startsWith('http://')) {
+        trimmed = trimmed.replace('http://', 'ws://');
+      } else if (trimmed.startsWith('https://')) {
+        trimmed = trimmed.replace('https://', 'wss://');
+      } else {
+        trimmed = `wss://${trimmed}`;
+      }
+    }
+
+    if (trimmed !== this.serverUrl) {
       this.serverUrl = trimmed;
       localStorage.setItem('smart_tank_sync_url', trimmed);
+
+      const derivedApi = trimmed.replace(/^ws(s?):\/\//, 'http$1://');
+      this.apiUrl = derivedApi;
+      localStorage.setItem('smart_tank_api_url', derivedApi);
+
       this.disconnect();
       this.connect();
     }
@@ -137,8 +187,8 @@ class SyncServiceClass {
    */
   public connect(url?: string): void {
     if (url) {
-      this.serverUrl = url;
-      localStorage.setItem('smart_tank_sync_url', url);
+      this.setServerUrl(url);
+      return;
     }
 
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
@@ -160,7 +210,7 @@ class SyncServiceClass {
           type: 'REGISTER_ROLE',
           role: this.role,
           deviceId: this.deviceId,
-          deviceName: navigator.userAgent.slice(0, 30),
+          deviceName: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 30) : 'WebClient',
         });
       };
 
@@ -173,8 +223,8 @@ class SyncServiceClass {
         }
       };
 
-      this.ws.onerror = (err) => {
-        console.warn('[SYNC] WebSocket error on connection to', this.serverUrl);
+      this.ws.onerror = () => {
+        console.warn('[SYNC] WebSocket connection error on', this.serverUrl);
         this.setStatus('ERROR');
       };
 
@@ -275,34 +325,101 @@ class SyncServiceClass {
   }
 
   /**
-   * Authenticate remote client with Security PIN
+   * Authenticate remote client with Security PIN using multi-tier fallback:
+   *  Tier 1: Direct WebSocket authentication if connected.
+   *  Tier 2: Primary HTTP API (/api/auth) on backend server.
+   *  Tier 3: Same-Origin API (/api/auth) on hosting provider (e.g. Vercel Serverless).
    */
   public async loginWithPin(pin: string): Promise<{ success: boolean; token?: string; error?: string }> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      // Fallback: Attempt HTTP POST /api/auth if WS is not open
+    const cleanPin = pin.trim();
+    if (!cleanPin) {
+      return { success: false, error: 'Please enter a PIN' };
+    }
+
+    // -------------------------------------------------------------
+    // Tier 1: Try WebSocket authentication if connection is open
+    // -------------------------------------------------------------
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
-        const httpBase = this.serverUrl.replace(/^ws(s?):\/\//, 'http$1://');
-        const res = await fetch(`${httpBase}/api/auth`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pin }),
-        });
-        const data = await res.json();
-        if (data.success && data.token) {
-          this.setAuthToken(data.token);
-          return { success: true, token: data.token };
+        const wsRes = await this.authenticateViaWebSocket(cleanPin);
+        if (wsRes.success) {
+          return wsRes;
         }
-        return { success: false, error: data.error || 'Authentication rejected' };
-      } catch (err: any) {
-        return { success: false, error: 'Cannot reach authentication server' };
+        // If server explicitly confirmed invalid PIN, return rejected status immediately
+        if (wsRes.error && wsRes.error.toLowerCase().includes('pin')) {
+          return wsRes;
+        }
+      } catch (wsErr) {
+        console.warn('[SYNC AUTH] WebSocket auth attempt failed, trying HTTP fallback', wsErr);
       }
     }
 
-    return new Promise((resolve) => {
-      const requestId = `auth_${Date.now()}`;
-      const timeout = setTimeout(() => {
-        resolve({ success: false, error: 'Authentication request timed out' });
+    // -------------------------------------------------------------
+    // Tier 2: Try Primary HTTP API (/api/auth)
+    // -------------------------------------------------------------
+    const primaryApiUrl = this.apiUrl.replace(/\/+$/, '');
+    try {
+      const res = await this.fetchWithTimeout(`${primaryApiUrl}/api/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: cleanPin }),
       }, 5000);
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success && data.token) {
+        this.setAuthToken(data.token);
+        return { success: true, token: data.token };
+      }
+      if (res.status === 401 || (data.error && data.error.toLowerCase().includes('pin'))) {
+        return { success: false, error: data.error || 'Invalid Security PIN. Authorization rejected.' };
+      }
+    } catch (err: any) {
+      console.warn(`[SYNC AUTH] Primary API (${primaryApiUrl}) unreachable:`, err?.message);
+    }
+
+    // -------------------------------------------------------------
+    // Tier 3: Same-Origin Serverless API (/api/auth) fallback
+    // -------------------------------------------------------------
+    if (typeof window !== 'undefined' && window.location.origin) {
+      const originApiUrl = window.location.origin.replace(/\/+$/, '');
+      if (originApiUrl !== primaryApiUrl) {
+        try {
+          const res = await this.fetchWithTimeout(`${originApiUrl}/api/auth`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pin: cleanPin }),
+          }, 5000);
+
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.success && data.token) {
+            this.setAuthToken(data.token);
+            return { success: true, token: data.token };
+          }
+          if (res.status === 401 || (data.error && data.error.toLowerCase().includes('pin'))) {
+            return { success: false, error: data.error || 'Invalid Security PIN. Authorization rejected.' };
+          }
+        } catch (err: any) {
+          console.warn(`[SYNC AUTH] Origin API (${originApiUrl}) unreachable:`, err?.message);
+        }
+      }
+    }
+
+    // Detailed descriptive diagnostic message if completely unreachable
+    return {
+      success: false,
+      error: `Cannot reach authentication backend (${primaryApiUrl}). If deploying on Render, the free instance may take ~30-50s to wake up from idle sleep. Please verify your server URL in Settings.`,
+    };
+  }
+
+  /**
+   * Helper to perform WebSocket authentication handshake
+   */
+  private authenticateViaWebSocket(pin: string): Promise<{ success: boolean; token?: string; error?: string }> {
+    return new Promise((resolve) => {
+      const requestId = `auth_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const timeout = setTimeout(() => {
+        resolve({ success: false, error: 'WebSocket authentication timed out' });
+      }, 4000);
 
       const oneTimeHandler = (event: MessageEvent) => {
         try {
@@ -315,11 +432,11 @@ class SyncServiceClass {
               this.setAuthToken(msg.token);
               resolve({ success: true, token: msg.token });
             } else {
-              resolve({ success: false, error: msg.error || 'Invalid PIN' });
+              resolve({ success: false, error: msg.error || 'Invalid Security PIN' });
             }
           }
         } catch (e) {
-          // ignore
+          // ignore parse errors
         }
       };
 
@@ -331,6 +448,57 @@ class SyncServiceClass {
         requestId,
       });
     });
+  }
+
+  /**
+   * Test health and reachability of target backend server
+   */
+  public async checkServerHealth(customUrl?: string): Promise<HealthCheckResult> {
+    const rawUrl = (customUrl || this.apiUrl).trim();
+    const httpBase = rawUrl.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/+$/, '');
+    const start = Date.now();
+
+    try {
+      const res = await this.fetchWithTimeout(`${httpBase}/api/health`, { method: 'GET' }, 6000);
+      const latencyMs = Date.now() - start;
+
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return {
+          ok: true,
+          latencyMs,
+          statusText: `ONLINE (${latencyMs}ms)`,
+          details: data,
+        };
+      }
+      return {
+        ok: false,
+        latencyMs,
+        statusText: `HTTP ${res.status}: ${res.statusText || 'Error'}`,
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        latencyMs: Date.now() - start,
+        statusText: err?.message?.includes('aborted')
+          ? 'Connection timed out (Server may be cold-starting)'
+          : err?.message || 'Server Unreachable',
+      };
+    }
+  }
+
+  /**
+   * Safe fetch with AbortController timeout
+   */
+  private async fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 5000): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      return response;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /**
@@ -350,7 +518,7 @@ class SyncServiceClass {
   public sendRemoteCommand(action: RemoteControlAction): Promise<CommandResponse> {
     return new Promise((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        return reject(new Error('Sync server is disconnected'));
+        return reject(new Error('Sync server is disconnected. Waiting for connection to restore...'));
       }
       if (!this.authToken) {
         return reject(new Error('UNAUTHORIZED: Please enter security PIN to operate cap controls'));
@@ -458,8 +626,8 @@ class SyncServiceClass {
   private scheduleReconnect(): void {
     if (this.isExplicitDisconnect || this.reconnectTimeout) return;
     this.reconnectAttempt++;
-    // Exponential backoff: 1s, 2s, 4s, up to 10s max
-    const delay = Math.min(10000, 1000 * Math.pow(1.5, this.reconnectAttempt));
+    // Exponential backoff: 1s, 2s, 4s, up to 8s max
+    const delay = Math.min(8000, 1000 * Math.pow(1.5, this.reconnectAttempt));
 
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectTimeout = null;

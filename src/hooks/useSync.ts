@@ -137,6 +137,10 @@ export function useSync({
     setServerUrlState(newUrl);
   }, []);
 
+  const checkServerHealth = useCallback(async (customUrl?: string) => {
+    return await SyncService.checkServerHealth(customUrl);
+  }, []);
+
   // Remote Action Dispatchers
   const triggerRemoteCapOpen = useCallback(async (): Promise<CommandResponse> => {
     return await SyncService.sendRemoteCommand('CAP_OPEN');
@@ -158,7 +162,9 @@ export function useSync({
     remoteSnapshot,
     isAuthenticated,
     serverUrl,
+    apiUrl: SyncService.getApiUrl(),
     setServerUrl,
+    checkServerHealth,
     authenticate,
     logout,
     broadcastCurrentState,
@@ -167,3 +173,4 @@ export function useSync({
     triggerRemoteEmergencyStop,
   };
 }
+

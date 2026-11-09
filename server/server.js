@@ -61,7 +61,8 @@ const server = http.createServer((req, res) => {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -71,7 +72,7 @@ const server = http.createServer((req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
-  if (url.pathname === '/' || url.pathname === '/health') {
+  if (url.pathname === '/' || url.pathname === '/health' || url.pathname === '/api/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify({
@@ -385,3 +386,4 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Default Auth PIN: ${DEFAULT_AUTH_PIN}`);
   console.log(`========================================================`);
 });
+

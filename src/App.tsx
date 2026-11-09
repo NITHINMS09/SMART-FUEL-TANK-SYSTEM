@@ -232,7 +232,9 @@ export function App() {
     remoteSnapshot,
     isAuthenticated,
     serverUrl,
+    apiUrl,
     setServerUrl,
+    checkServerHealth,
     authenticate,
     logout,
     broadcastCurrentState,
@@ -662,9 +664,12 @@ export function App() {
         }}
         onLogout={logout}
         serverUrl={serverUrl}
+        apiUrl={apiUrl}
         onUpdateServerUrl={setServerUrl}
+        onCheckHealth={checkServerHealth}
         isGatewayOnline={isGatewayOnline}
         isThisDeviceGateway={isThisDeviceGateway}
+        syncStatus={syncStatus}
       />
     </div>
   );

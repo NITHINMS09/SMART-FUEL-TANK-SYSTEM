@@ -87,10 +87,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onRequestAuth,
 }) => {
   const [isRetrying, setIsRetrying] = React.useState(false);
+  const [isProcessing, setIsProcessing] = React.useState(false);
   const confirmedCalPoints = calibrationPoints.filter((p) => p.status === 'CONFIRMED');
   const isCalibrated = confirmedCalPoints.length >= 2;
 
   const isCapControlDisabled =
+    isProcessing ||
     (!isThisDeviceGateway && !isGatewayOnline) ||
     (isThisDeviceGateway && connectionState !== 'CONNECTED') ||
     isAutomationRunning ||
@@ -102,7 +104,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       if (onRequestAuth) onRequestAuth();
       return;
     }
-    await onTriggerCapClose();
+    setIsProcessing(true);
+    try {
+      await onTriggerCapClose();
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleCapOpenClick = async () => {
@@ -111,7 +118,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       if (onRequestAuth) onRequestAuth();
       return;
     }
-    await onTriggerCapOpen();
+    setIsProcessing(true);
+    try {
+      await onTriggerCapOpen();
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleRetry = async () => {
