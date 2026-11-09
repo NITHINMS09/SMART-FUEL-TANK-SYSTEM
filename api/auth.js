@@ -3,7 +3,33 @@ import crypto from 'crypto';
 
 const DEFAULT_AUTH_PIN = process.env.REMOTE_AUTH_PIN || '124580';
 
-export default function handler(req, res) {
+async function parseBody(req) {
+  if (req.body && typeof req.body === 'object') {
+    return req.body;
+  }
+  if (typeof req.body === 'string') {
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return {};
+    }
+  }
+  return new Promise((resolve) => {
+    let buffer = '';
+    req.on('data', (chunk) => {
+      buffer += chunk;
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(buffer || '{}'));
+      } catch {
+        resolve({});
+      }
+    });
+  });
+}
+
+export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -23,8 +49,10 @@ export default function handler(req, res) {
   }
 
   try {
-    const { pin } = req.body || {};
-    if (typeof pin === 'string' && pin.trim() === DEFAULT_AUTH_PIN) {
+    const body = await parseBody(req);
+    const pin = body && typeof body.pin === 'string' ? body.pin.trim() : (body && body.pin !== undefined ? String(body.pin).trim() : '');
+
+    if (pin && pin === DEFAULT_AUTH_PIN) {
       const token = `tok_${crypto.randomBytes(16).toString('hex')}`;
       return res.status(200).json({
         success: true,
