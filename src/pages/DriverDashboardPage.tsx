@@ -115,11 +115,7 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
 
   // Button Click Handlers
   const handleCapCloseClick = async () => {
-    if (isControlDisabled) return;
-    if (!isThisDeviceGateway && !isAuthenticated) {
-      if (onRequestAuth) onRequestAuth();
-      return;
-    }
+    if (isControlDisabled || !isThisDeviceGateway) return;
     setIsProcessing(true);
     try {
       await onTriggerCapClose();
@@ -129,11 +125,7 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
   };
 
   const handleCapOpenClick = async () => {
-    if (isControlDisabled) return;
-    if (!isThisDeviceGateway && !isAuthenticated) {
-      if (onRequestAuth) onRequestAuth();
-      return;
-    }
+    if (isControlDisabled || !isThisDeviceGateway) return;
     setIsProcessing(true);
     try {
       await onTriggerCapOpen();
@@ -551,66 +543,78 @@ export const DriverDashboardPage: React.FC<DriverDashboardPageProps> = ({
             )}
           </div>
 
-          {/* Automotive Cockpit Dual Push-Buttons */}
-          <div className="w-full max-w-xs sm:max-w-sm grid grid-cols-2 gap-3 sm:gap-4">
-            {/* 1. CAP CLOSE BUTTON */}
-            <button
-              type="button"
-              onClick={handleCapCloseClick}
-              disabled={isControlDisabled}
-              className={`group relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 min-h-[50px] sm:min-h-[64px] ${
-                capState === 'CLOSED'
-                  ? 'bg-gradient-to-b from-cyan-600 to-cyan-800 border-cyan-300 text-white shadow-[0_0_30px_rgba(6,182,212,0.6)]'
-                  : 'bg-gradient-to-b from-[#0f172a] to-[#070b14] border-slate-700 hover:border-cyan-500 text-slate-200 shadow-lg'
-              }`}
-            >
-              {/* LED Ring Glow */}
-              <div
-                className={`w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 rounded-full border mb-1.5 sm:mb-2 transition-all ${
+          {/* Automotive Cockpit Dual Push-Buttons or Read-Only Monitor */}
+          {isThisDeviceGateway ? (
+            <div className="w-full max-w-xs sm:max-w-sm grid grid-cols-2 gap-3 sm:gap-4">
+              {/* 1. CAP CLOSE BUTTON */}
+              <button
+                type="button"
+                onClick={handleCapCloseClick}
+                disabled={isControlDisabled}
+                className={`group relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 min-h-[50px] sm:min-h-[64px] ${
                   capState === 'CLOSED'
-                    ? 'bg-cyan-200 border-white shadow-[0_0_12px_#ffffff]'
-                    : 'bg-slate-800 border-slate-600'
+                    ? 'bg-gradient-to-b from-cyan-600 to-cyan-800 border-cyan-300 text-white shadow-[0_0_30px_rgba(6,182,212,0.6)]'
+                    : 'bg-gradient-to-b from-[#0f172a] to-[#070b14] border-slate-700 hover:border-cyan-500 text-slate-200 shadow-lg'
                 }`}
-              />
+              >
+                {/* LED Ring Glow */}
+                <div
+                  className={`w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 rounded-full border mb-1.5 sm:mb-2 transition-all ${
+                    capState === 'CLOSED'
+                      ? 'bg-cyan-200 border-white shadow-[0_0_12px_#ffffff]'
+                      : 'bg-slate-800 border-slate-600'
+                  }`}
+                />
 
-              <div className="flex items-center space-x-1.5">
-                <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                <span className="font-mono text-xs sm:text-sm font-extrabold tracking-wider">CAP CLOSE</span>
-              </div>
-              <span className="font-mono text-[8px] sm:text-[9px] uppercase text-cyan-200/80 mt-0.5 sm:mt-1 text-center font-medium">
-                ENABLE AUTO
-              </span>
-            </button>
+                <div className="flex items-center space-x-1.5">
+                  <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="font-mono text-xs sm:text-sm font-extrabold tracking-wider">CAP CLOSE</span>
+                </div>
+                <span className="font-mono text-[8px] sm:text-[9px] uppercase text-cyan-200/80 mt-0.5 sm:mt-1 text-center font-medium">
+                  ENABLE AUTO
+                </span>
+              </button>
 
-            {/* 2. CAP OPEN BUTTON */}
-            <button
-              type="button"
-              onClick={handleCapOpenClick}
-              disabled={isControlDisabled}
-              className={`group relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 min-h-[50px] sm:min-h-[64px] ${
-                capState === 'OPEN'
-                  ? 'bg-gradient-to-b from-amber-600 to-amber-800 border-amber-300 text-white shadow-[0_0_30px_rgba(245,158,11,0.6)]'
-                  : 'bg-gradient-to-b from-[#0f172a] to-[#070b14] border-slate-700 hover:border-amber-500 text-slate-200 shadow-lg'
-              }`}
-            >
-              {/* LED Ring Glow */}
-              <div
-                className={`w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 rounded-full border mb-1.5 sm:mb-2 transition-all ${
+              {/* 2. CAP OPEN BUTTON */}
+              <button
+                type="button"
+                onClick={handleCapOpenClick}
+                disabled={isControlDisabled}
+                className={`group relative flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 transition-all duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 min-h-[50px] sm:min-h-[64px] ${
                   capState === 'OPEN'
-                    ? 'bg-amber-200 border-white shadow-[0_0_12px_#ffffff]'
-                    : 'bg-slate-800 border-slate-600'
+                    ? 'bg-gradient-to-b from-amber-600 to-amber-800 border-amber-300 text-white shadow-[0_0_30px_rgba(245,158,11,0.6)]'
+                    : 'bg-gradient-to-b from-[#0f172a] to-[#070b14] border-slate-700 hover:border-amber-500 text-slate-200 shadow-lg'
                 }`}
-              />
+              >
+                {/* LED Ring Glow */}
+                <div
+                  className={`w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 rounded-full border mb-1.5 sm:mb-2 transition-all ${
+                    capState === 'OPEN'
+                      ? 'bg-amber-200 border-white shadow-[0_0_12px_#ffffff]'
+                      : 'bg-slate-800 border-slate-600'
+                  }`}
+                />
 
-              <div className="flex items-center space-x-1.5">
-                <Unlock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                <span className="font-mono text-xs sm:text-sm font-extrabold tracking-wider">CAP OPEN</span>
+                <div className="flex items-center space-x-1.5">
+                  <Unlock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="font-mono text-xs sm:text-sm font-extrabold tracking-wider">CAP OPEN</span>
+                </div>
+                <span className="font-mono text-[8px] sm:text-[9px] uppercase text-amber-200/80 mt-0.5 sm:mt-1 text-center font-medium">
+                  DISABLE AUTO
+                </span>
+              </button>
+            </div>
+          ) : (
+            <div className="w-full max-w-xs sm:max-w-sm p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-700/80 bg-gradient-to-b from-[#0b111e] to-[#050811] flex flex-col items-center text-center shadow-lg">
+              <div className="flex items-center space-x-2 text-cyan-400 font-mono text-xs font-bold uppercase tracking-wider mb-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>READ-ONLY VEHICLE TELEMETRY</span>
               </div>
-              <span className="font-mono text-[8px] sm:text-[9px] uppercase text-amber-200/80 mt-0.5 sm:mt-1 text-center font-medium">
-                DISABLE AUTO
-              </span>
-            </button>
-          </div>
+              <p className="text-[10px] sm:text-[11px] font-mono text-slate-400">
+                Live monitoring stream active. Physical cap controls are operated exclusively by the Primary Gateway Laptop.
+              </p>
+            </div>
+          )}
 
           {/* Subtle Driver Notice */}
           <div className="flex items-center space-x-1.5 text-[9px] sm:text-[10px] font-mono text-slate-500 tracking-wide text-center">

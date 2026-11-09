@@ -13,8 +13,12 @@ import {
   RefreshCw,
   Usb,
   ShieldAlert,
+  Fuel,
+  ChevronRight,
+  Clock,
 } from 'lucide-react';
 import {
+  ActiveRefillSession,
   AutomationFeedbackState,
   CalibrationPoint,
   ConnectionState,
@@ -26,6 +30,7 @@ import {
   MotorStatus,
   OperatingMode,
   RawReading,
+  RefillRecord,
 } from '../types';
 import { LiveCard } from '../components/common/LiveCard';
 import { StatusBadge } from '../components/common/StatusBadge';
@@ -58,6 +63,9 @@ interface DashboardPageProps {
   gatewayMessage?: string;
   isAuthenticated?: boolean;
   onRequestAuth?: () => void;
+  refillHistory?: RefillRecord[];
+  activeRefillSession?: ActiveRefillSession | null;
+  onNavigateToRefill?: () => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -85,6 +93,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   gatewayMessage,
   isAuthenticated = false,
   onRequestAuth,
+  refillHistory = [],
+  activeRefillSession = null,
+  onNavigateToRefill,
 }) => {
   const [isRetrying, setIsRetrying] = React.useState(false);
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -99,11 +110,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     motorStatus === 'RUNNING';
 
   const handleCapCloseClick = async () => {
-    if (isCapControlDisabled) return;
-    if (!isThisDeviceGateway && !isAuthenticated) {
-      if (onRequestAuth) onRequestAuth();
-      return;
-    }
+    if (isCapControlDisabled || !isThisDeviceGateway) return;
     setIsProcessing(true);
     try {
       await onTriggerCapClose();
@@ -113,11 +120,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   };
 
   const handleCapOpenClick = async () => {
-    if (isCapControlDisabled) return;
-    if (!isThisDeviceGateway && !isAuthenticated) {
-      if (onRequestAuth) onRequestAuth();
-      return;
-    }
+    if (isCapControlDisabled || !isThisDeviceGateway) return;
     setIsProcessing(true);
     try {
       await onTriggerCapOpen();
@@ -147,16 +150,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Prominent ESP32 Gateway Offline Status Banner (Requirement 2) */}
+      {/* Prominent ESP32 Gateway Offline Status Banner */}
       {!isThisDeviceGateway && !isGatewayOnline && (
         <div className="p-4 rounded-xl bg-rose-950/80 border border-rose-500/80 shadow-glow-red flex items-center space-x-3 text-rose-200 font-mono text-xs animate-pulse">
           <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
           <div className="min-w-0">
             <div className="font-extrabold uppercase tracking-wider text-rose-300 text-sm">
-              ESP32 GATEWAY OFFLINE – REMOTE CONTROL UNAVAILABLE
+              ESP32 GATEWAY OFFLINE – LIVE MONITORING PAUSED
             </div>
             <div className="text-xs text-rose-300/80 mt-0.5">
-              The authoritative Web Serial hardware gateway (Laptop A) is currently disconnected. Live hardware telemetry is paused and remote cap controls are disabled.
+              The authoritative Web Serial hardware gateway (Primary Laptop) is currently disconnected. Live hardware telemetry is paused until the laptop gateway connects to the relay.
             </div>
           </div>
         </div>
@@ -314,47 +317,54 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </span>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={onTriggerCapClose}
-                disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs tracking-wider transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                  automationFeedbackState.capState === 'CLOSED'
-                    ? 'bg-cyan-600 text-slate-950 shadow-glow-cyan'
-                    : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-800/60'
-                }`}
-                title="Close cap and enable automatic adjustments"
-              >
-                <Lock className="w-3.5 h-3.5 fill-current" />
-                <span>CAP CLOSE</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onTriggerCapOpen}
-                disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs tracking-wider transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                  automationFeedbackState.capState === 'OPEN'
-                    ? 'bg-sky-600 text-white shadow-glow-blue'
-                    : 'bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-800/60'
-                }`}
-                title="Open cap and disable automatic adjustments"
-              >
-                <Unlock className="w-3.5 h-3.5" />
-                <span>CAP OPEN</span>
-              </button>
-
-              {onEmergencyStop && (
+            {isThisDeviceGateway ? (
+              <div className="flex items-center space-x-2">
                 <button
                   type="button"
-                  onClick={onEmergencyStop}
-                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold tracking-wider shadow-sm transition-all"
+                  onClick={onTriggerCapClose}
+                  disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs tracking-wider transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                    automationFeedbackState.capState === 'CLOSED'
+                      ? 'bg-cyan-600 text-slate-950 shadow-glow-cyan'
+                      : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-800/60'
+                  }`}
+                  title="Close cap and enable automatic adjustments"
                 >
-                  STOP
+                  <Lock className="w-3.5 h-3.5 fill-current" />
+                  <span>CAP CLOSE</span>
                 </button>
-              )}
-            </div>
+
+                <button
+                  type="button"
+                  onClick={onTriggerCapOpen}
+                  disabled={connectionState !== 'CONNECTED' || isAutomationRunning || motorStatus === 'RUNNING'}
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs tracking-wider transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                    automationFeedbackState.capState === 'OPEN'
+                      ? 'bg-sky-600 text-white shadow-glow-blue'
+                      : 'bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-800/60'
+                  }`}
+                  title="Open cap and disable automatic adjustments"
+                >
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>CAP OPEN</span>
+                </button>
+
+                {onEmergencyStop && (
+                  <button
+                    type="button"
+                    onClick={onEmergencyStop}
+                    className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold tracking-wider shadow-sm transition-all"
+                  >
+                    STOP
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2 px-3 py-1 rounded-lg bg-slate-900/90 border border-slate-700/60 font-mono text-[11px] text-slate-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-bold text-white uppercase tracking-wider">READ-ONLY MONITOR</span>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 text-center">
@@ -569,6 +579,165 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
+      {/* Fuel Refill History Compact Summary Widget */}
+      <div className="panel-glass rounded-xl p-5 border-slate-800 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 rounded-lg bg-emerald-950/80 border border-emerald-800/50 text-emerald-400">
+              <Fuel className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-mono font-bold uppercase text-white tracking-wider flex items-center space-x-2">
+                <span>Fuel Refill History</span>
+                {refillHistory.length > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-500/50 text-emerald-300 font-mono">
+                    {refillHistory.filter((r) => r.status === 'FUEL REFILLED').length} Refills
+                  </span>
+                )}
+              </h3>
+              <p className="text-xs text-slate-400 font-mono">
+                Automatic cap transition tracking: volume added between cap opening and closing
+              </p>
+            </div>
+          </div>
+
+          {onNavigateToRefill && (
+            <button
+              type="button"
+              onClick={onNavigateToRefill}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-emerald-300 border border-emerald-800/50 hover:border-emerald-500 font-mono text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer"
+            >
+              <span>VIEW FULL LOGS</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Live Active Refill Session Banner if Cap is currently open */}
+        {activeRefillSession && (
+          <div className="p-3.5 rounded-lg bg-amber-950/40 border border-amber-500/60 font-mono text-xs space-y-2 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+                <span className="font-bold text-amber-300 uppercase tracking-wider">
+                  ACTIVE REFILL IN PROGRESS
+                </span>
+                <span className="text-[10px] text-amber-400/80 px-2 py-0.5 rounded bg-black/40 border border-amber-900">
+                  CAP OPEN
+                </span>
+              </div>
+              <span className="text-slate-400 text-[11px]">
+                Duration: <strong className="text-amber-300">{activeRefillSession.durationSeconds}s</strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-center">
+              <div className="bg-black/50 p-2 rounded border border-slate-800">
+                <span className="text-[10px] text-slate-500 uppercase block">Start Volume</span>
+                <span className="text-white font-bold text-sm">
+                  {formatNumber(activeRefillSession.startVolumeMl, 1)} ml
+                </span>
+              </div>
+              <div className="bg-black/50 p-2 rounded border border-slate-800">
+                <span className="text-[10px] text-slate-500 uppercase block">Current Volume</span>
+                <span className="text-sky-300 font-bold text-sm">
+                  {formatNumber(activeRefillSession.currentVolumeMl, 1)} ml
+                </span>
+              </div>
+              <div className="bg-black/50 p-2 rounded border border-slate-800">
+                <span className="text-[10px] text-slate-500 uppercase block">Live Change</span>
+                <span
+                  className={`font-bold text-sm ${
+                    activeRefillSession.netVolumeChangeMl >= 15
+                      ? 'text-emerald-400'
+                      : activeRefillSession.netVolumeChangeMl > 0
+                      ? 'text-amber-400'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  {activeRefillSession.netVolumeChangeMl >= 0 ? '+' : ''}
+                  {formatNumber(activeRefillSession.netVolumeChangeMl, 1)} ml
+                </span>
+              </div>
+              <div className="bg-black/50 p-2 rounded border border-slate-800">
+                <span className="text-[10px] text-slate-500 uppercase block">Status</span>
+                <span
+                  className={`font-bold text-xs ${
+                    activeRefillSession.netVolumeChangeMl >= 15 ? 'text-emerald-400' : 'text-slate-400'
+                  }`}
+                >
+                  {activeRefillSession.netVolumeChangeMl >= 15 ? 'REFILL DETECTED' : 'MONITORING'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Refill summary cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono">
+          <div className="bg-[#050a14] p-3 rounded-lg border border-slate-800 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Total Refills</span>
+              <span className="text-emerald-400 font-bold text-lg">
+                {refillHistory.filter((r) => r.status === 'FUEL REFILLED').length}
+              </span>
+              <span className="text-[10px] text-slate-500 block">
+                {refillHistory.length} total cap openings
+              </span>
+            </div>
+            <Droplets className="w-6 h-6 text-emerald-500/40" />
+          </div>
+
+          <div className="bg-[#050a14] p-3 rounded-lg border border-slate-800 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Total Added</span>
+              <span className="text-cyan-400 font-bold text-lg">
+                {formatNumber(
+                  refillHistory
+                    .filter((r) => r.status === 'FUEL REFILLED')
+                    .reduce((sum, r) => sum + r.fuelAddedMl, 0),
+                  1
+                )}{' '}
+                <span className="text-xs text-slate-400 font-normal">ml</span>
+              </span>
+              <span className="text-[10px] text-slate-500 block">
+                {(
+                  refillHistory
+                    .filter((r) => r.status === 'FUEL REFILLED')
+                    .reduce((sum, r) => sum + r.fuelAddedMl, 0) / 1000
+                ).toFixed(2)}{' '}
+                litres added
+              </span>
+            </div>
+            <Fuel className="w-6 h-6 text-cyan-500/40" />
+          </div>
+
+          <div className="bg-[#050a14] p-3 rounded-lg border border-slate-800 flex items-center justify-between">
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase block font-semibold">Latest Refill</span>
+              {(() => {
+                const latest = refillHistory.find((r) => r.status === 'FUEL REFILLED');
+                if (!latest) {
+                  return <span className="text-slate-400 font-bold text-sm">No refills yet</span>;
+                }
+                return (
+                  <div>
+                    <span className="text-emerald-400 font-bold text-lg">
+                      +{formatNumber(latest.fuelAddedMl, 1)}{' '}
+                      <span className="text-xs text-slate-400 font-normal">ml</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500 block">
+                      {formatDateTime(latest.closedAt)}
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+            <Clock className="w-6 h-6 text-slate-600" />
+          </div>
+        </div>
+      </div>
+
       {/* 5. Automatic Cap Control System Card (Fulfills Requirements 1, 2, 3, 4, 5, 6) */}
       <div className="panel-glass rounded-xl p-5 border-slate-800 space-y-4 shadow-xl">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
@@ -608,55 +777,45 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
-            {!isThisDeviceGateway && (
-              <span
-                className={`text-[10px] px-2.5 py-1 rounded-lg border font-mono text-center ${
-                  isGatewayOnline
-                    ? isAuthenticated
-                      ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300'
-                      : 'bg-amber-950/80 border-amber-500/60 text-amber-300'
-                    : 'bg-rose-950/80 border-rose-500/60 text-rose-300'
+          {isThisDeviceGateway ? (
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+              <button
+                type="button"
+                onClick={handleCapCloseClick}
+                disabled={isCapControlDisabled}
+                className={`px-4 sm:px-5 py-2.5 rounded-xl font-mono text-xs font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  automationFeedbackState?.capState === 'CLOSED'
+                    ? 'bg-cyan-600 text-slate-950 shadow-glow-cyan'
+                    : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-800/60'
                 }`}
+                title="Close cap to configured angle and enable continuous automatic adjustments"
               >
-                {isGatewayOnline
-                  ? isAuthenticated
-                    ? 'REMOTE AUTH OK'
-                    : 'PIN REQUIRED'
-                  : 'GATEWAY OFFLINE'}
-              </span>
-            )}
+                <Lock className="w-4 h-4 fill-current" />
+                <span>CAP CLOSE (ENABLE AUTO)</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={handleCapCloseClick}
-              disabled={isCapControlDisabled}
-              className={`px-4 sm:px-5 py-2.5 rounded-xl font-mono text-xs font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                automationFeedbackState?.capState === 'CLOSED'
-                  ? 'bg-cyan-600 text-slate-950 shadow-glow-cyan'
-                  : 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-800/60'
-              }`}
-              title="Close cap to configured angle and enable continuous automatic adjustments"
-            >
-              <Lock className="w-4 h-4 fill-current" />
-              <span>CAP CLOSE (ENABLE AUTO)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCapOpenClick}
-              disabled={isCapControlDisabled}
-              className={`px-4 sm:px-5 py-2.5 rounded-xl font-mono text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                automationFeedbackState?.capState === 'OPEN'
-                  ? 'bg-sky-600 text-white shadow-glow-blue'
-                  : 'bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-800/60'
-              }`}
-              title="Open cap to configured angle and disable automatic adjustments"
-            >
-              <Unlock className="w-4 h-4" />
-              <span>CAP OPEN (DISABLE AUTO)</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={handleCapOpenClick}
+                disabled={isCapControlDisabled}
+                className={`px-4 sm:px-5 py-2.5 rounded-xl font-mono text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  automationFeedbackState?.capState === 'OPEN'
+                    ? 'bg-sky-600 text-white shadow-glow-blue'
+                    : 'bg-slate-900 hover:bg-slate-800 text-sky-300 border border-sky-800/60'
+                }`}
+                title="Open cap to configured angle and disable automatic adjustments"
+              >
+                <Unlock className="w-4 h-4" />
+                <span>CAP OPEN (DISABLE AUTO)</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-slate-900/90 border border-slate-700/80 font-mono text-xs text-slate-300 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="font-bold text-white uppercase tracking-wider">READ-ONLY VIEWER</span>
+              <span className="text-[10px] text-slate-400 hidden sm:inline">(Controls active on Gateway Laptop)</span>
+            </div>
+          )}
         </div>
 
         {/* 6 Required Metric Displays */}

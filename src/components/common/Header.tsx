@@ -154,16 +154,16 @@ export const Header: React.FC<HeaderProps> = ({
               className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg border font-mono text-xs flex items-center space-x-1.5 transition-all cursor-pointer min-h-[36px] ${
                 isThisDeviceGateway
                   ? 'bg-cyan-950/50 border-cyan-700/60 text-cyan-300 hover:border-cyan-400'
-                  : isAuthenticated
+                  : isGatewayOnline
                   ? 'bg-emerald-950/50 border-emerald-700/60 text-emerald-300 hover:border-emerald-400'
-                  : 'bg-amber-950/50 border-amber-700/60 text-amber-300 hover:border-amber-400'
+                  : 'bg-slate-900 border-slate-700/60 text-slate-400 hover:border-slate-500'
               }`}
               title={
                 isThisDeviceGateway
-                  ? 'Hosting Authoritative Hardware Gateway'
-                  : isAuthenticated
-                  ? 'Remote Client Authenticated (PIN Verified)'
-                  : 'Remote Client - Click to enter Security PIN'
+                  ? 'Hosting Authoritative Hardware Gateway (Primary Laptop)'
+                  : isGatewayOnline
+                  ? 'Real-time hardware telemetry active (Viewer Mode)'
+                  : 'Hardware Gateway offline - Click to view connection diagnostics'
               }
             >
               {isThisDeviceGateway ? (
@@ -171,15 +171,15 @@ export const Header: React.FC<HeaderProps> = ({
                   <Radio className="w-3.5 h-3.5 text-cyan-400" />
                   <span className="hidden sm:inline">HOST</span>
                 </>
-              ) : isAuthenticated ? (
+              ) : isGatewayOnline ? (
                 <>
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="hidden sm:inline">AUTH OK</span>
+                  <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                  <span className="hidden sm:inline">SYNCED</span>
                 </>
               ) : (
                 <>
-                  <Shield className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="hidden sm:inline">AUTH PIN</span>
+                  <Radio className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="hidden sm:inline">SYNC</span>
                 </>
               )}
             </button>

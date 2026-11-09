@@ -86,36 +86,6 @@ export function useSync({
     }
   }, [isThisDeviceGateway]);
 
-  // Handle incoming remote commands if this device is the active Gateway
-  useEffect(() => {
-    if (!isThisDeviceGateway || !onExecuteLocalCommand) return;
-
-    const unsubCommand = SyncService.onGatewayCommand(async ({ action, requestId }) => {
-      console.log(`[GATEWAY EXECUTION] Received remote command ${action} (req: ${requestId})`);
-      try {
-        const result = await onExecuteLocalCommand(action, requestId);
-        SyncService.sendGatewayAck(
-          requestId,
-          action,
-          result.success,
-          result.message,
-          result.capState
-        );
-      } catch (err: any) {
-        SyncService.sendGatewayAck(
-          requestId,
-          action,
-          false,
-          err?.message || 'Execution error on ESP32 gateway'
-        );
-      }
-    });
-
-    return () => {
-      unsubCommand();
-    };
-  }, [isThisDeviceGateway, onExecuteLocalCommand]);
-
   // Periodic / Throttle Gateway Telemetry Broadcast
   const broadcastCurrentState = useCallback(() => {
     if (!isThisDeviceGateway || !localSnapshotProvider) return;

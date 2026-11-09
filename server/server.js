@@ -108,6 +108,8 @@ let latestSnapshot = {
   selectedDegrees: null,
   selectedDirection: null,
   lastMotorOperation: null,
+  refillHistory: [],
+  activeRefillSession: null,
 };
 
 // Connected client sockets
@@ -386,61 +388,21 @@ wss.on('connection', (ws, req) => {
         }
 
         // -------------------------------------------------------------
-        // 4. REMOTE COMMAND EXECUTION (Client -> Server -> Gateway)
+        // 4. REMOTE COMMAND EXECUTION (Disabled: Monitoring Only)
         // -------------------------------------------------------------
         case 'EXECUTE_COMMAND': {
-          const { action, token, requestId } = data;
-
-          // Check if gateway is online
-          if (!activeGatewayWs || activeGatewayWs.readyState !== WebSocket.OPEN) {
-            ws.send(
-              JSON.stringify({
-                type: 'COMMAND_REJECTED',
-                requestId,
-                action,
-                error: 'ESP32 GATEWAY OFFLINE – REMOTE CONTROL UNAVAILABLE',
-              })
-            );
-            return;
-          }
-
-          // Security check: Validate command authorization token (stateless & memory)
-          if (!verifyAuthToken(token)) {
-            ws.send(
-              JSON.stringify({
-                type: 'COMMAND_REJECTED',
-                requestId,
-                action,
-                error: 'UNAUTHORIZED: Please enter valid security PIN to operate cap controls',
-              })
-            );
-            return;
-          }
-
-          // Validate permitted actions
-          if (action !== 'CAP_OPEN' && action !== 'CAP_CLOSE' && action !== 'EMERGENCY_STOP') {
-            ws.send(
-              JSON.stringify({
-                type: 'COMMAND_REJECTED',
-                requestId,
-                action,
-                error: `Unknown hardware action: ${action}`,
-              })
-            );
-            return;
-          }
-
-          console.log(`[DISPATCH COMMAND] Routing ${action} (req: ${requestId}) to ESP32 Gateway (${activeGatewayDeviceId})...`);
-
-          // Forward command to the authoritative Gateway (Laptop A)
-          activeGatewayWs.send(
+          const { action, requestId } = data;
+          console.warn(`[COMMAND BLOCKED] Remote '${action}' rejected. System is in Multi-Device Monitoring Only mode.`);
+          ws.send(
             JSON.stringify({
-              type: 'DISPATCH_HARDWARE_COMMAND',
-              action,
+              type: 'COMMAND_REJECTED',
               requestId,
-              timestamp: Date.now(),
+              action,
+              error: 'REMOTE CONTROL DISABLED: This platform operates in Multi-Device Monitoring Only mode. Hardware actuation is restricted to the Primary Gateway Laptop.',
             })
           );
+          break;
+        }
           break;
         }
 

@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSerial } from './hooks/useSerial';
 import { useCalibration } from './hooks/useCalibration';
 import { useMotorProfiles } from './hooks/useMotorProfiles';
 import { useLoadCell } from './hooks/useLoadCell';
 import { useAutomation } from './hooks/useAutomation';
 import { useSync } from './hooks/useSync';
+import { useRefillDetection } from './hooks/useRefillDetection';
 import { StorageService } from './services/storageService';
 import {
   DeviceSettings,
@@ -29,6 +30,7 @@ import { RemoteAuthModal } from './components/common/RemoteAuthModal';
 // Pages
 import { DriverDashboardPage } from './pages/DriverDashboardPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { RefillHistoryPage } from './pages/RefillHistoryPage';
 import { LiveMonitoringPage } from './pages/LiveMonitoringPage';
 import { CalibrationPage } from './pages/CalibrationPage';
 import { CalibrationHistoryPage } from './pages/CalibrationHistoryPage';
@@ -129,6 +131,10 @@ export function App() {
   const [remoteReadings, setRemoteReadings] = useState<RawReading[]>([]);
   const [remoteVolumeHistory, setRemoteVolumeHistory] = useState<{ timestamp: number; volumeMl: number }[]>([]);
 
+  // Refill detection state references for instantaneous gateway telemetry snapshotting
+  const refillHistoryRef = useRef<any[]>(StorageService.loadRefillHistory());
+  const activeRefillSessionRef = useRef<any | null>(StorageService.loadActiveRefillSession());
+
   // Telemetry Snapshot Provider for Gateway Broadcasting
   const getLocalSnapshot = useCallback((): TelemetrySnapshot => {
     const confirmedPoints = points.filter((p) => p.status === 'CONFIRMED');
@@ -173,6 +179,8 @@ export function App() {
           ? null
           : (automationFeedbackState?.motorDirection as MotorDirection),
       lastMotorOperation: lastOperation,
+      refillHistory: refillHistoryRef.current,
+      activeRefillSession: activeRefillSessionRef.current,
     };
   }, [
     connectionState,
@@ -347,53 +355,46 @@ export function App() {
     ? 'CONNECTED'
     : 'DISCONNECTED';
 
-  // Effective Cap Control Dispatchers
+  // Fuel Refill Detection Hook (Authoritative on Gateway, synchronized to clients)
+  const {
+    refillHistory,
+    activeSession: activeRefillSession,
+    clearHistory: clearRefillHistory,
+  } = useRefillDetection({
+    isThisDeviceGateway,
+    capState: effectiveCapState,
+    currentVolumeMl: effectiveVolumeInterpolation.volumeMl,
+    remoteRefillHistory: remoteSnapshot?.refillHistory,
+    remoteActiveSession: remoteSnapshot?.activeRefillSession,
+  });
+
+  // Keep snapshot ref up-to-date and broadcast immediately on gateway change
+  useEffect(() => {
+    refillHistoryRef.current = refillHistory;
+    activeRefillSessionRef.current = activeRefillSession;
+    if (isThisDeviceGateway) {
+      broadcastCurrentState();
+    }
+  }, [refillHistory, activeRefillSession, isThisDeviceGateway, broadcastCurrentState]);
+
+  // Cap Control Dispatchers (Authoritative hardware execution on Primary Laptop only)
   const handleEffectiveTriggerCapClose = useCallback(async () => {
     if (isThisDeviceGateway) {
       await triggerCapClose();
-    } else {
-      if (!isGatewayOnline) {
-        alert('ESP32 GATEWAY OFFLINE – REMOTE CONTROL UNAVAILABLE');
-        return;
-      }
-      if (!isAuthenticated) {
-        setIsAuthModalOpen(true);
-        return;
-      }
-      const res = await triggerRemoteCapClose();
-      if (!res.success) {
-        alert(`Remote command failed: ${res.message}`);
-      }
     }
-  }, [isThisDeviceGateway, isGatewayOnline, isAuthenticated, triggerCapClose, triggerRemoteCapClose]);
+  }, [isThisDeviceGateway, triggerCapClose]);
 
   const handleEffectiveTriggerCapOpen = useCallback(async () => {
     if (isThisDeviceGateway) {
       await triggerCapOpen();
-    } else {
-      if (!isGatewayOnline) {
-        alert('ESP32 GATEWAY OFFLINE – REMOTE CONTROL UNAVAILABLE');
-        return;
-      }
-      if (!isAuthenticated) {
-        setIsAuthModalOpen(true);
-        return;
-      }
-      const res = await triggerRemoteCapOpen();
-      if (!res.success) {
-        alert(`Remote command failed: ${res.message}`);
-      }
     }
-  }, [isThisDeviceGateway, isGatewayOnline, isAuthenticated, triggerCapOpen, triggerRemoteCapOpen]);
+  }, [isThisDeviceGateway, triggerCapOpen]);
 
   const handleEffectiveEmergencyStop = useCallback(async () => {
     if (isThisDeviceGateway) {
       await emergencyStop();
-    } else {
-      if (!isGatewayOnline) return;
-      await triggerRemoteEmergencyStop();
     }
-  }, [isThisDeviceGateway, isGatewayOnline, emergencyStop, triggerRemoteEmergencyStop]);
+  }, [isThisDeviceGateway, emergencyStop]);
 
   // Synchronize stability threshold with settings
   useEffect(() => {
@@ -471,6 +472,7 @@ export function App() {
           }}
           calibrationPointCount={points.filter((p) => p.status === 'CONFIRMED').length}
           motorProfileCount={profiles.length}
+          refillCount={refillHistory.length}
           mode={mode}
           isMotorRunning={effectiveMotorStatus === 'RUNNING'}
           isMobileOpen={isMobileMenuOpen}
@@ -532,6 +534,20 @@ export function App() {
               gatewayMessage={gatewayMessage}
               isAuthenticated={isAuthenticated}
               onRequestAuth={() => setIsAuthModalOpen(true)}
+              refillHistory={refillHistory}
+              activeRefillSession={activeRefillSession}
+              onNavigateToRefill={() => setActivePage('refill-history')}
+            />
+          )}
+
+          {activePage === 'refill-history' && (
+            <RefillHistoryPage
+              refillHistory={refillHistory}
+              activeSession={activeRefillSession}
+              capState={effectiveCapState}
+              currentVolumeMl={effectiveVolumeInterpolation.volumeMl}
+              isThisDeviceGateway={isThisDeviceGateway}
+              onClearHistory={clearRefillHistory}
             />
           )}
 

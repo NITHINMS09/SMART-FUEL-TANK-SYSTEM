@@ -11,6 +11,7 @@ import {
   Settings,
   Database,
   ShieldCheck,
+  Fuel,
   X,
 } from 'lucide-react';
 import { OperatingMode } from '../../types';
@@ -18,6 +19,7 @@ import { OperatingMode } from '../../types';
 export type PageId =
   | 'driver-dashboard'
   | 'dashboard'
+  | 'refill-history'
   | 'live-monitoring'
   | 'calibration'
   | 'calibration-history'
@@ -32,6 +34,7 @@ interface SidebarProps {
   onSelectPage: (page: PageId) => void;
   calibrationPointCount: number;
   motorProfileCount: number;
+  refillCount?: number;
   mode: OperatingMode;
   isMotorRunning: boolean;
   isMobileOpen?: boolean;
@@ -43,6 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectPage,
   calibrationPointCount,
   motorProfileCount,
+  refillCount = 0,
   mode,
   isMotorRunning,
   isMobileOpen = false,
@@ -66,6 +70,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'dashboard',
       label: 'Dashboard',
       icon: LayoutDashboard,
+    },
+    {
+      id: 'refill-history',
+      label: 'Fuel Refill History',
+      icon: Fuel,
+      badge: refillCount > 0 ? refillCount : undefined,
+      badgeColor: 'bg-emerald-950 text-emerald-400 border border-emerald-800/40',
     },
     {
       id: 'live-monitoring',

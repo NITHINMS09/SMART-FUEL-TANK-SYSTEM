@@ -817,34 +817,14 @@ class SyncServiceClass {
   }
 
   /**
-   * Send remote motor command from Client to Gateway
+   * Send remote motor command (Disabled: Multi-Device Monitoring Only mode)
    */
   public sendRemoteCommand(action: RemoteControlAction): Promise<CommandResponse> {
-    return new Promise((resolve, reject) => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        return reject(new Error('Sync server is disconnected. Waiting for connection to restore...'));
-      }
-      if (!this.authToken) {
-        return reject(new Error('UNAUTHORIZED: Please enter security PIN to operate cap controls'));
-      }
-
-      const requestId = `cmd_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-
-      // 10 second timeout for ESP32 hardware acknowledgement
-      const timer = setTimeout(() => {
-        this.pendingCommands.delete(requestId);
-        reject(new Error('Timeout: ESP32 hardware did not acknowledge command in time'));
-      }, 10000);
-
-      this.pendingCommands.set(requestId, { resolve, reject, timer });
-
-      this.send({
-        type: 'EXECUTE_COMMAND',
-        action,
-        token: this.authToken,
-        requestId,
-      });
-    });
+    return Promise.reject(
+      new Error(
+        'REMOTE CONTROL DISABLED: This platform operates in Multi-Device Monitoring Only mode. Hardware actuation is restricted to the Primary Gateway Laptop.'
+      )
+    );
   }
 
   // -----------------------------------------------------------------

@@ -212,6 +212,37 @@ export interface AutomaticCapState {
 }
 
 // ==========================================
+// FUEL REFILL MONITORING & HISTORY TYPES
+// ==========================================
+
+export type RefillStatus = 'FUEL REFILLED' | 'NO REFILL DETECTED';
+
+export interface RefillRecord {
+  id: string;
+  openedAt: number;
+  closedAt: number;
+  startVolumeMl: number;
+  endVolumeMl: number;
+  maxVolumeMl: number;
+  minVolumeMl: number;
+  netVolumeChangeMl: number;
+  fuelAddedMl: number;
+  durationSeconds: number;
+  status: RefillStatus;
+}
+
+export interface ActiveRefillSession {
+  id: string;
+  openedAt: number;
+  startVolumeMl: number;
+  currentVolumeMl: number;
+  maxVolumeMl: number;
+  minVolumeMl: number;
+  netVolumeChangeMl: number;
+  durationSeconds: number;
+}
+
+// ==========================================
 // MULTI-DEVICE REAL-TIME SYNCHRONIZATION TYPES
 // ==========================================
 
@@ -243,6 +274,9 @@ export interface TelemetrySnapshot {
   selectedDegrees?: number | null;
   selectedDirection?: MotorDirection | null;
   lastMotorOperation?: LastMotorOperation | null;
+  // Fuel Refill History Synchronization
+  refillHistory?: RefillRecord[];
+  activeRefillSession?: ActiveRefillSession | null;
 }
 
 export type RemoteControlAction = 'CAP_OPEN' | 'CAP_CLOSE' | 'EMERGENCY_STOP';

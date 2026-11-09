@@ -1,4 +1,4 @@
-import { BackupData, CalibrationPoint, DeviceSettings, MotorProfile, AutomationEvent } from '../types';
+import { BackupData, CalibrationPoint, DeviceSettings, MotorProfile, AutomationEvent, RefillRecord, ActiveRefillSession } from '../types';
 
 const STORAGE_KEYS = {
   CALIBRATION_POINTS: 'smart_tank_calibration_points',
@@ -8,6 +8,8 @@ const STORAGE_KEYS = {
   LAST_BACKUP: 'smart_tank_last_backup_timestamp',
   MOTOR_POSITION: 'smart_tank_motor_position',
   AUTOMATION_CONFIG: 'smart_tank_automation_config',
+  REFILL_HISTORY: 'smart_tank_refill_history',
+  ACTIVE_REFILL_SESSION: 'smart_tank_active_refill_session',
 };
 
 export const DEFAULT_SETTINGS: DeviceSettings = {
@@ -302,6 +304,73 @@ export class StorageService {
       };
     } catch (e: any) {
       return { valid: false, error: e.message || 'Syntax error in JSON file' };
+    }
+  }
+
+  /**
+   * Load stored completed fuel refill history records
+   */
+  static loadRefillHistory(): RefillRecord[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.REFILL_HISTORY);
+      if (!data) return [];
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      console.error('Failed to load refill history from storage:', e);
+      return [];
+    }
+  }
+
+  /**
+   * Save completed fuel refill history records
+   */
+  static saveRefillHistory(history: RefillRecord[]): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.REFILL_HISTORY, JSON.stringify(history));
+    } catch (e) {
+      console.error('Failed to save refill history to storage:', e);
+    }
+  }
+
+  /**
+   * Load any currently active / in-progress fuel refill session
+   */
+  static loadActiveRefillSession(): ActiveRefillSession | null {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.ACTIVE_REFILL_SESSION);
+      if (!data) return null;
+      return JSON.parse(data);
+    } catch (e) {
+      console.error('Failed to load active refill session from storage:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Save or clear active fuel refill session
+   */
+  static saveActiveRefillSession(session: ActiveRefillSession | null): void {
+    try {
+      if (!session) {
+        localStorage.removeItem(STORAGE_KEYS.ACTIVE_REFILL_SESSION);
+      } else {
+        localStorage.setItem(STORAGE_KEYS.ACTIVE_REFILL_SESSION, JSON.stringify(session));
+      }
+    } catch (e) {
+      console.error('Failed to save active refill session to storage:', e);
+    }
+  }
+
+  /**
+   * Clear all stored refill history
+   */
+  static clearRefillHistory(): void {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.REFILL_HISTORY);
+      localStorage.removeItem(STORAGE_KEYS.ACTIVE_REFILL_SESSION);
+    } catch (e) {
+      console.error('Failed to clear refill history from storage:', e);
     }
   }
 }
